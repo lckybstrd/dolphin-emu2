@@ -7,6 +7,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
@@ -296,6 +297,11 @@ public final class EmulationActivity extends AppCompatActivity
 
     if (NativeLibrary.IsGameMetadataValid())
       setTitle(NativeLibrary.GetCurrentTitleDescription());
+
+    if (Build.VERSION.SDK_INT >= 24)
+    {
+      getWindow().setSustainedPerformanceMode(true);
+    }
   }
 
   @Override
