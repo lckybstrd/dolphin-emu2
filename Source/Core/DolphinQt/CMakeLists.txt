@@ -355,6 +355,8 @@ add_executable(dolphin-emu
   SkylanderPortal/SkylanderModifyDialog.h
   SkylanderPortal/SkylanderPortalWindow.cpp
   SkylanderPortal/SkylanderPortalWindow.h
+  TAS/BalanceBoardWidget.cpp
+  TAS/BalanceBoardWidget.h
   TAS/GCTASInputWindow.cpp
   TAS/GCTASInputWindow.h
   TAS/GBATASInputWindow.cpp
