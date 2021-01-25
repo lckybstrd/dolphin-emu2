@@ -34,10 +34,6 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 
-namespace
-{
-}  // namespace
-
 #if defined(ANDROID)
 static std::function<std::string(std::string)> s_get_val_func;
 void DolphinAnalytics::AndroidSetGetValFunc(std::function<std::string(std::string)> func)
@@ -45,6 +41,105 @@ void DolphinAnalytics::AndroidSetGetValFunc(std::function<std::string(std::strin
   s_get_val_func = std::move(func);
 }
 #endif
+
+namespace
+{
+void AddVersionInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  builder->AddData("version-desc", Common::scm_desc_str);
+  builder->AddData("version-hash", Common::scm_rev_git_str);
+  builder->AddData("version-branch", Common::scm_branch_str);
+  builder->AddData("version-dist", Common::scm_distributor_str);
+}
+
+void AddAutoUpdateInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  builder->AddData("update-track", SConfig::GetInstance().m_auto_update_track);
+}
+
+void AddCPUInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  builder->AddData("cpu-summary", cpu_info.Summarize());
+}
+
+#if defined(_WIN32)
+void AddWindowsInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  // Windows 8 removes support for GetVersionEx and such. Stupid.
+  const DWORD(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW);
+  *(FARPROC*)&RtlGetVersion = GetProcAddress(GetModuleHandle(TEXT("ntdll")), "RtlGetVersion");
+
+  OSVERSIONINFOEXW winver;
+  winver.dwOSVersionInfoSize = sizeof(winver);
+  if (RtlGetVersion != nullptr)
+  {
+    RtlGetVersion(&winver);
+    builder->AddData("win-ver-major", static_cast<u32>(winver.dwMajorVersion));
+    builder->AddData("win-ver-minor", static_cast<u32>(winver.dwMinorVersion));
+    builder->AddData("win-ver-build", static_cast<u32>(winver.dwBuildNumber));
+    builder->AddData("win-ver-spmajor", static_cast<u32>(winver.wServicePackMajor));
+    builder->AddData("win-ver-spminor", static_cast<u32>(winver.wServicePackMinor));
+  }
+}
+#elif defined(ANDROID)
+void AddAndroidInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  builder->AddData("android-manufacturer", s_get_val_func("DEVICE_MANUFACTURER"));
+  builder->AddData("android-model", s_get_val_func("DEVICE_MODEL"));
+  builder->AddData("android-version", s_get_val_func("DEVICE_OS"));
+}
+#elif defined(__APPLE__)
+void AddMacOSInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+  // id processInfo = [NSProcessInfo processInfo]
+  id processInfo = reinterpret_cast<id (*)(Class, SEL)>(objc_msgSend)(
+      objc_getClass("NSProcessInfo"), sel_getUid("processInfo"));
+  if (processInfo)
+  {
+    struct OSVersion  // NSOperatingSystemVersion
+    {
+      s64 major_version;  // NSInteger majorVersion
+      s64 minor_version;  // NSInteger minorVersion
+      s64 patch_version;  // NSInteger patchVersion
+    };
+
+    // NSOperatingSystemVersion version = [processInfo operatingSystemVersion]
+    OSVersion version = reinterpret_cast<OSVersion (*)(id, SEL)>(objc_msgSend_stret)(
+        processInfo, sel_getUid("operatingSystemVersion"));
+
+    builder->AddData("osx-ver-major", version.major_version);
+    builder->AddData("osx-ver-minor", version.minor_version);
+    builder->AddData("osx-ver-bugfix", version.patch_version);
+  }
+}
+#endif
+
+void AddPlatformInformationToReportBuilder(Common::AnalyticsReportBuilder* builder)
+{
+#if defined(_WIN32)
+  builder->AddData("os-type", "windows");
+  AddWindowsInformationToReportBuilder(builder);
+#elif defined(ANDROID)
+  builder->AddData("os-type", "android");
+  AddAndroidInformationToReportBuilder(builder);
+#elif defined(__APPLE__)
+  builder->AddData("os-type", "osx");
+  AddMacOSInformationToReportBuilder(builder);
+#elif defined(__linux__)
+  builder->AddData("os-type", "linux");
+#elif defined(__FreeBSD__)
+  builder->AddData("os-type", "freebsd");
+#elif defined(__OpenBSD__)
+  builder->AddData("os-type", "openbsd");
+#elif defined(__NetBSD__)
+  builder->AddData("os-type", "netbsd");
+#elif defined(__HAIKU__)
+  builder->AddData("os-type", "haiku");
+#else
+  builder->AddData("os-type", "unknown");
+#endif
+}
+}  // namespace
 
 DolphinAnalytics::DolphinAnalytics()
 {
@@ -236,82 +331,12 @@ bool DolphinAnalytics::ShouldStartPerformanceSampling()
 
 void DolphinAnalytics::MakeBaseBuilder()
 {
-  Common::AnalyticsReportBuilder builder;
+  m_base_builder = Common::AnalyticsReportBuilder();
 
-  // Version information.
-  builder.AddData("version-desc", Common::scm_desc_str);
-  builder.AddData("version-hash", Common::scm_rev_git_str);
-  builder.AddData("version-branch", Common::scm_branch_str);
-  builder.AddData("version-dist", Common::scm_distributor_str);
-
-  // Auto-Update information.
-  builder.AddData("update-track", SConfig::GetInstance().m_auto_update_track);
-
-  // CPU information.
-  builder.AddData("cpu-summary", cpu_info.Summarize());
-
-// OS information.
-#if defined(_WIN32)
-  builder.AddData("os-type", "windows");
-
-  // Windows 8 removes support for GetVersionEx and such. Stupid.
-  DWORD(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW);
-  *(FARPROC*)&RtlGetVersion = GetProcAddress(GetModuleHandle(TEXT("ntdll")), "RtlGetVersion");
-
-  OSVERSIONINFOEXW winver;
-  winver.dwOSVersionInfoSize = sizeof(winver);
-  if (RtlGetVersion != nullptr)
-  {
-    RtlGetVersion(&winver);
-    builder.AddData("win-ver-major", static_cast<u32>(winver.dwMajorVersion));
-    builder.AddData("win-ver-minor", static_cast<u32>(winver.dwMinorVersion));
-    builder.AddData("win-ver-build", static_cast<u32>(winver.dwBuildNumber));
-    builder.AddData("win-ver-spmajor", static_cast<u32>(winver.wServicePackMajor));
-    builder.AddData("win-ver-spminor", static_cast<u32>(winver.wServicePackMinor));
-  }
-#elif defined(ANDROID)
-  builder.AddData("os-type", "android");
-  builder.AddData("android-manufacturer", s_get_val_func("DEVICE_MANUFACTURER"));
-  builder.AddData("android-model", s_get_val_func("DEVICE_MODEL"));
-  builder.AddData("android-version", s_get_val_func("DEVICE_OS"));
-#elif defined(__APPLE__)
-  builder.AddData("os-type", "osx");
-
-  // id processInfo = [NSProcessInfo processInfo]
-  id processInfo = reinterpret_cast<id (*)(Class, SEL)>(objc_msgSend)(
-      objc_getClass("NSProcessInfo"), sel_getUid("processInfo"));
-  if (processInfo)
-  {
-    struct OSVersion  // NSOperatingSystemVersion
-    {
-      s64 major_version;  // NSInteger majorVersion
-      s64 minor_version;  // NSInteger minorVersion
-      s64 patch_version;  // NSInteger patchVersion
-    };
-
-    // NSOperatingSystemVersion version = [processInfo operatingSystemVersion]
-    OSVersion version = reinterpret_cast<OSVersion (*)(id, SEL)>(objc_msgSend_stret)(
-        processInfo, sel_getUid("operatingSystemVersion"));
-
-    builder.AddData("osx-ver-major", version.major_version);
-    builder.AddData("osx-ver-minor", version.minor_version);
-    builder.AddData("osx-ver-bugfix", version.patch_version);
-  }
-#elif defined(__linux__)
-  builder.AddData("os-type", "linux");
-#elif defined(__FreeBSD__)
-  builder.AddData("os-type", "freebsd");
-#elif defined(__OpenBSD__)
-  builder.AddData("os-type", "openbsd");
-#elif defined(__NetBSD__)
-  builder.AddData("os-type", "netbsd");
-#elif defined(__HAIKU__)
-  builder.AddData("os-type", "haiku");
-#else
-  builder.AddData("os-type", "unknown");
-#endif
-
-  m_base_builder = builder;
+  AddVersionInformationToReportBuilder(&m_base_builder);
+  AddAutoUpdateInformationToReportBuilder(&m_base_builder);
+  AddCPUInformationToReportBuilder(&m_base_builder);
+  AddPlatformInformationToReportBuilder(&m_base_builder);
 }
 
 static const char* GetShaderCompilationMode(const VideoConfig& video_config)
