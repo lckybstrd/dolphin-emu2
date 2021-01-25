@@ -358,23 +358,24 @@ static const char* GetShaderCompilationMode(const VideoConfig& video_config)
 void DolphinAnalytics::MakePerGameBuilder()
 {
   Common::AnalyticsReportBuilder builder(m_base_builder);
+  const SConfig& config = SConfig::GetInstance();
 
   // Gameid.
-  builder.AddData("gameid", SConfig::GetInstance().GetGameID());
+  builder.AddData("gameid", config.GetGameID());
 
   // Unique id bound to the gameid.
-  builder.AddData("id", MakeUniqueId(SConfig::GetInstance().GetGameID()));
+  builder.AddData("id", MakeUniqueId(config.GetGameID()));
 
   // Configuration.
-  builder.AddData("cfg-dsp-hle", SConfig::GetInstance().bDSPHLE);
-  builder.AddData("cfg-dsp-jit", SConfig::GetInstance().m_DSPEnableJIT);
-  builder.AddData("cfg-dsp-thread", SConfig::GetInstance().bDSPThread);
-  builder.AddData("cfg-cpu-thread", SConfig::GetInstance().bCPUThread);
-  builder.AddData("cfg-fastmem", SConfig::GetInstance().bFastmem);
-  builder.AddData("cfg-syncgpu", SConfig::GetInstance().bSyncGPU);
-  builder.AddData("cfg-audio-backend", SConfig::GetInstance().sBackend);
-  builder.AddData("cfg-oc-enable", SConfig::GetInstance().m_OCEnable);
-  builder.AddData("cfg-oc-factor", SConfig::GetInstance().m_OCFactor);
+  builder.AddData("cfg-dsp-hle", config.bDSPHLE);
+  builder.AddData("cfg-dsp-jit", config.m_DSPEnableJIT);
+  builder.AddData("cfg-dsp-thread", config.bDSPThread);
+  builder.AddData("cfg-cpu-thread", config.bCPUThread);
+  builder.AddData("cfg-fastmem", config.bFastmem);
+  builder.AddData("cfg-syncgpu", config.bSyncGPU);
+  builder.AddData("cfg-audio-backend", config.sBackend);
+  builder.AddData("cfg-oc-enable", config.m_OCEnable);
+  builder.AddData("cfg-oc-factor", config.m_OCFactor);
   builder.AddData("cfg-render-to-main", Config::Get(Config::MAIN_RENDER_TO_MAIN));
   if (g_video_backend)
   {
@@ -403,32 +404,33 @@ void DolphinAnalytics::MakePerGameBuilder()
   builder.AddData("cfg-gfx-fast-depth", g_Config.bFastDepthCalc);
   builder.AddData("cfg-gfx-vertex-rounding", g_Config.UseVertexRounding());
 
+  const auto& video_backend = g_Config.backend_info;
+
   // GPU features.
-  if (g_Config.iAdapter < static_cast<int>(g_Config.backend_info.Adapters.size()))
+  if (g_Config.iAdapter < static_cast<int>(video_backend.Adapters.size()))
   {
-    builder.AddData("gpu-adapter", g_Config.backend_info.Adapters[g_Config.iAdapter]);
+    builder.AddData("gpu-adapter", video_backend.Adapters[g_Config.iAdapter]);
   }
-  else if (!g_Config.backend_info.AdapterName.empty())
+  else if (!video_backend.AdapterName.empty())
   {
-    builder.AddData("gpu-adapter", g_Config.backend_info.AdapterName);
+    builder.AddData("gpu-adapter", video_backend.AdapterName);
   }
-  builder.AddData("gpu-has-exclusive-fullscreen",
-                  g_Config.backend_info.bSupportsExclusiveFullscreen);
-  builder.AddData("gpu-has-dual-source-blend", g_Config.backend_info.bSupportsDualSourceBlend);
-  builder.AddData("gpu-has-primitive-restart", g_Config.backend_info.bSupportsPrimitiveRestart);
-  builder.AddData("gpu-has-oversized-viewports", g_Config.backend_info.bSupportsOversizedViewports);
-  builder.AddData("gpu-has-geometry-shaders", g_Config.backend_info.bSupportsGeometryShaders);
-  builder.AddData("gpu-has-3d-vision", g_Config.backend_info.bSupports3DVision);
-  builder.AddData("gpu-has-early-z", g_Config.backend_info.bSupportsEarlyZ);
-  builder.AddData("gpu-has-binding-layout", g_Config.backend_info.bSupportsBindingLayout);
-  builder.AddData("gpu-has-bbox", g_Config.backend_info.bSupportsBBox);
+  builder.AddData("gpu-has-exclusive-fullscreen", video_backend.bSupportsExclusiveFullscreen);
+  builder.AddData("gpu-has-dual-source-blend", video_backend.bSupportsDualSourceBlend);
+  builder.AddData("gpu-has-primitive-restart", video_backend.bSupportsPrimitiveRestart);
+  builder.AddData("gpu-has-oversized-viewports", video_backend.bSupportsOversizedViewports);
+  builder.AddData("gpu-has-geometry-shaders", video_backend.bSupportsGeometryShaders);
+  builder.AddData("gpu-has-3d-vision", video_backend.bSupports3DVision);
+  builder.AddData("gpu-has-early-z", video_backend.bSupportsEarlyZ);
+  builder.AddData("gpu-has-binding-layout", video_backend.bSupportsBindingLayout);
+  builder.AddData("gpu-has-bbox", video_backend.bSupportsBBox);
   builder.AddData("gpu-has-fragment-stores-and-atomics",
-                  g_Config.backend_info.bSupportsFragmentStoresAndAtomics);
-  builder.AddData("gpu-has-gs-instancing", g_Config.backend_info.bSupportsGSInstancing);
-  builder.AddData("gpu-has-post-processing", g_Config.backend_info.bSupportsPostProcessing);
-  builder.AddData("gpu-has-palette-conversion", g_Config.backend_info.bSupportsPaletteConversion);
-  builder.AddData("gpu-has-clip-control", g_Config.backend_info.bSupportsClipControl);
-  builder.AddData("gpu-has-ssaa", g_Config.backend_info.bSupportsSSAA);
+                  video_backend.bSupportsFragmentStoresAndAtomics);
+  builder.AddData("gpu-has-gs-instancing", video_backend.bSupportsGSInstancing);
+  builder.AddData("gpu-has-post-processing", video_backend.bSupportsPostProcessing);
+  builder.AddData("gpu-has-palette-conversion", video_backend.bSupportsPaletteConversion);
+  builder.AddData("gpu-has-clip-control", video_backend.bSupportsClipControl);
+  builder.AddData("gpu-has-ssaa", video_backend.bSupportsSSAA);
 
   // NetPlay / recording.
   builder.AddData("netplay", NetPlay::IsNetPlayRunning());
