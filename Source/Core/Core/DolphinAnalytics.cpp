@@ -438,8 +438,7 @@ void DolphinAnalytics::MakePerGameBuilder()
 
   // Controller information
   // We grab enough to tell what percentage of our users are playing with keyboard/mouse, some kind
-  // of gamepad
-  // or the official gamecube adapter.
+  // of gamepad, or the official gamecube adapter.
   builder.AddData("gcadapter-detected", GCAdapter::IsDetected(nullptr));
   builder.AddData("has-controller", Pad::GetConfig()->IsControllerControlledByGamepadDevice(0) ||
                                         GCAdapter::IsDetected(nullptr));
