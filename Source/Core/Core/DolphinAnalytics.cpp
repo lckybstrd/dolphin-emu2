@@ -248,7 +248,7 @@ constexpr std::array<const char*, 19> GAME_QUIRKS_NAMES{
     "uses-maybe-invalid-cp-command",
     "uses-cp-perf-command",
 };
-static_assert(GAME_QUIRKS_NAMES.size() == static_cast<u32>(GameQuirk::COUNT),
+static_assert(GAME_QUIRKS_NAMES.size() == static_cast<u32>(GameQuirk::Count),
               "Game quirks names and enum definition are out of sync.");
 
 void DolphinAnalytics::ReportGameQuirk(GameQuirk quirk)

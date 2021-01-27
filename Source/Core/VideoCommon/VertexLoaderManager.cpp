@@ -329,7 +329,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
     if (!(sub_cmd == UNKNOWN_20 && value == 0))
     {
       // All titles using libogc or the official SDK issue 0x20 with value=0 on startup
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_CP_PERF_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesCPPerfCommand);
       DEBUG_LOG_FMT(VIDEO, "Unknown CP command possibly relating to perf queries used: {:02x}",
                     sub_cmd);
     }
@@ -338,7 +338,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case MATINDEX_A:
     if (sub_cmd != MATINDEX_A)
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO,
                    "CP MATINDEX_A: an exact value of {:02x} was expected "
                    "but instead a value of {:02x} was seen",
@@ -352,7 +352,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case MATINDEX_B:
     if (sub_cmd != MATINDEX_B)
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO,
                    "CP MATINDEX_B: an exact value of {:02x} was expected "
                    "but instead a value of {:02x} was seen",
@@ -366,7 +366,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case VCD_LO:
     if (sub_cmd != VCD_LO)  // Stricter than YAGCD
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO,
                    "CP VCD_LO: an exact value of {:02x} was expected "
                    "but instead a value of {:02x} was seen",
@@ -381,7 +381,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case VCD_HI:
     if (sub_cmd != VCD_HI)  // Stricter than YAGCD
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO,
                    "CP VCD_HI: an exact value of {:02x} was expected "
                    "but instead a value of {:02x} was seen",
@@ -396,7 +396,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case CP_VAT_REG_A:
     if ((sub_cmd - CP_VAT_REG_A) >= CP_NUM_VAT_REG)
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO, "CP_VAT_REG_A: Invalid VAT {}", sub_cmd - CP_VAT_REG_A);
     }
     state->vtx_attr[sub_cmd & CP_VAT_MASK].g0.Hex = value;
@@ -406,7 +406,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case CP_VAT_REG_B:
     if ((sub_cmd - CP_VAT_REG_B) >= CP_NUM_VAT_REG)
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO, "CP_VAT_REG_B: Invalid VAT {}", sub_cmd - CP_VAT_REG_B);
     }
     state->vtx_attr[sub_cmd & CP_VAT_MASK].g1.Hex = value;
@@ -416,7 +416,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
   case CP_VAT_REG_C:
     if ((sub_cmd - CP_VAT_REG_C) >= CP_NUM_VAT_REG)
     {
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_MAYBE_INVALID_CP_COMMAND);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesMaybeInvalidCPCommand);
       WARN_LOG_FMT(VIDEO, "CP_VAT_REG_C: Invalid VAT {}", sub_cmd - CP_VAT_REG_C);
     }
     state->vtx_attr[sub_cmd & CP_VAT_MASK].g2.Hex = value;
@@ -435,7 +435,7 @@ void LoadCPReg(u32 sub_cmd, u32 value, bool is_preprocess)
     break;
 
   default:
-    DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::USES_UNKNOWN_CP_COMMAND);
+    DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::UsesUnknownCPCommand);
     WARN_LOG_FMT(VIDEO, "Unknown CP register {:02x} set to {:08x}", sub_cmd, value);
   }
 }
