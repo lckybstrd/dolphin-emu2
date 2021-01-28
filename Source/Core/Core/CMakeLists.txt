@@ -412,6 +412,7 @@ add_library(core
   NetworkCaptureLogger.h
   PatchEngine.cpp
   PatchEngine.h
+  PerformanceSample.h
   PowerPC/BreakPoints.cpp
   PowerPC/BreakPoints.h
   PowerPC/CachedInterpreter/CachedInterpreter.cpp
