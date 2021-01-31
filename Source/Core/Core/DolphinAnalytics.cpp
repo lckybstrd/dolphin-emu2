@@ -4,7 +4,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include <fmt/format.h>
 #include <mbedtls/sha1.h>
