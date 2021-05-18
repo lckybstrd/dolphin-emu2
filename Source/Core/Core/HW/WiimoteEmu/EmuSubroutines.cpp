@@ -490,7 +490,7 @@ bool Wiimote::ProcessReadDataRequest()
         m_read_request.address + m_read_request.size > CameraLogic::REPORT_DATA_OFFSET;
 
     if (is_reading_ext || is_reading_ir)
-      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::DIRECTLY_READS_WIIMOTE_INPUT);
+      DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::DirectlyReadsWiimoteInput);
 
     // Top byte of address is ignored on the bus, but it IS maintained in the read-reply.
     auto const bytes_read = m_i2c_bus.BusRead(

@@ -192,7 +192,7 @@ u32 InstructionCache::ReadInstruction(u32 addr)
     INFO_LOG_FMT(POWERPC,
                  "ICache read at {:08x} returned stale data: CACHED: {:08x} vs. RAM: {:08x}", addr,
                  res, inmem);
-    DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::ICACHE_MATTERS);
+    DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::ICacheMatters);
   }
   return res;
 }
