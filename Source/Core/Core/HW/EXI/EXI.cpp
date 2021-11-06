@@ -79,6 +79,18 @@ void AddMemoryCard(Slot slot)
   auto& state = Core::System::GetInstance().GetExpansionInterfaceState().GetData();
   state.channels[SlotToEXIChannel(slot)]->AddDevice(memorycard_device, SlotToEXIDevice(slot));
 }
+
+void AddSP1Device()
+{
+  EXIDeviceType sp1_device = EXIDeviceType::Baseboard;
+  if (!SConfig::GetInstance().bTriforce)
+  {
+    sp1_device = Config::Get(Config::MAIN_SERIAL_PORT_1);
+  }
+
+  auto& state = Core::System::GetInstance().GetExpansionInterfaceState().GetData();
+  state.channels[0]->AddDevice(sp1_device, SlotToEXIDevice(Slot::SP1));
+}
 }  // namespace
 
 u8 SlotToEXIChannel(Slot slot)
@@ -157,8 +169,7 @@ void Init(const Sram* override_sram)
     AddMemoryCard(slot);
 
   state.channels[0]->AddDevice(EXIDeviceType::MaskROM, 1);
-  state.channels[SlotToEXIChannel(Slot::SP1)]->AddDevice(Config::Get(Config::MAIN_SERIAL_PORT_1),
-                                                         SlotToEXIDevice(Slot::SP1));
+  AddSP1Device();
   state.channels[2]->AddDevice(EXIDeviceType::AD16, 0);
 
   auto& core_timing = system.GetCoreTiming();
