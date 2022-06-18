@@ -204,7 +204,7 @@ void AcceleratorSetup(PB_TYPE* pb)
 // by the accelerator on real hardware).
 u16 AcceleratorGetSample()
 {
-  return s_accelerator->Read(acc_pb->adpcm.coefs);
+  return s_accelerator->ReadSample(acc_pb->adpcm.coefs);
 }
 
 // Reads samples from the input callback, resamples them to <count> samples at
