@@ -151,7 +151,9 @@ static PB_TYPE* acc_pb;
 class HLEAccelerator final : public Accelerator
 {
 protected:
-  void OnEndException() override
+  void OnRawReadEndException() override {}
+  void OnRawWriteEndException() override {}
+  void OnSampleReadEndException() override
   {
     if (acc_pb->audio_addr.looping)
     {
