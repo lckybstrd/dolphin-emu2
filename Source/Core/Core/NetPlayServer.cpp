@@ -431,6 +431,16 @@ ConnectionError NetPlayServer::OnConnect(ENetPeer* socket, sf::Packet& rpac)
       break;
     }
   }
+  
+  // try to automatically assign new user a wiimote
+  for (PlayerId& mapping : m_wiimote_map)
+  {
+    if (mapping == 0)
+    {
+      mapping = player.pid;
+      break;
+    }
+  }
 
   // send join message to already connected clients
   sf::Packet spac;
