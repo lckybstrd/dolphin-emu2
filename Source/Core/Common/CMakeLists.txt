@@ -77,6 +77,8 @@ add_library(common
   HookableEvent.h
   HttpRequest.cpp
   HttpRequest.h
+  I2C.cpp
+  I2C.h
   Image.cpp
   Image.h
   IniFile.cpp
