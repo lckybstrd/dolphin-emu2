@@ -262,6 +262,7 @@
     <ClInclude Include="Core\HW\EXI\EXI_Device.h" />
     <ClInclude Include="Core\HW\EXI\EXI_DeviceAD16.h" />
     <ClInclude Include="Core\HW\EXI\EXI_DeviceAGP.h" />
+    <ClInclude Include="Core\HW\EXI\EXI_DeviceBaseboard.h" />
     <ClInclude Include="Core\HW\EXI\EXI_DeviceDummy.h" />
     <ClInclude Include="Core\HW\EXI\EXI_DeviceEthernet.h" />
     <ClInclude Include="Core\HW\EXI\EXI_DeviceGecko.h" />
@@ -294,6 +295,7 @@
     <ClInclude Include="Core\HW\MMIOHandlers.h" />
     <ClInclude Include="Core\HW\ProcessorInterface.h" />
     <ClInclude Include="Core\HW\SI\SI_Device.h" />
+    <ClInclude Include="Core\HW\SI\SI_DeviceBaseboard.h" />
     <ClInclude Include="Core\HW\SI\SI_DeviceDanceMat.h" />
     <ClInclude Include="Core\HW\SI\SI_DeviceGBA.h" />
     <ClInclude Include="Core\HW\SI\SI_DeviceGBAEmu.h" />
@@ -884,6 +886,7 @@
     <ClCompile Include="Core\HW\EXI\EXI_Device.cpp" />
     <ClCompile Include="Core\HW\EXI\EXI_DeviceAD16.cpp" />
     <ClCompile Include="Core\HW\EXI\EXI_DeviceAGP.cpp" />
+    <ClCompile Include="Core\HW\EXI\EXI_DeviceBaseboard.cpp" />
     <ClCompile Include="Core\HW\EXI\EXI_DeviceDummy.cpp" />
     <ClCompile Include="Core\HW\EXI\EXI_DeviceEthernet.cpp" />
     <ClCompile Include="Core\HW\EXI\EXI_DeviceGecko.cpp" />
@@ -914,6 +917,7 @@
     <ClCompile Include="Core\HW\MMIO.cpp" />
     <ClCompile Include="Core\HW\ProcessorInterface.cpp" />
     <ClCompile Include="Core\HW\SI\SI_Device.cpp" />
+    <ClCompile Include="Core\HW\SI\SI_DeviceBaseboard.cpp" />
     <ClCompile Include="Core\HW\SI\SI_DeviceDanceMat.cpp" />
     <ClCompile Include="Core\HW\SI\SI_DeviceGBA.cpp" />
     <ClCompile Include="Core\HW\SI\SI_DeviceGBAEmu.cpp" />

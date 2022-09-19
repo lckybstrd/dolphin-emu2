@@ -880,6 +880,14 @@ void ExecuteCommand(ReplyType reply_type)
   DIInterruptType interrupt_type = DIInterruptType::TCINT;
   bool command_handled_by_thread = false;
 
+  // Swaps endian of Triforce DI commands, and zeroes out random bytes to prevent unknown read
+  // subcommand errors
+  if (DVDThread::GetDiscType() == DiscIO::Platform::Triforce)
+  {
+    // TODO(C++23): Use std::byteswap and a bitwise AND for increased clarity
+    s_DICMDBUF[0] <<= 24;
+  }
+
   // DVDLowRequestError needs access to the error code set by the previous command
   if (static_cast<DICommand>(state.DICMDBUF[0] >> 24) != DICommand::RequestError)
     SetDriveError(DriveError::None);
@@ -929,7 +937,42 @@ void ExecuteCommand(ReplyType reply_type)
 
       if (state.drive_state == DriveState::ReadyNoReadsMade)
         SetDriveState(DriveState::Ready);
-
+      // if (DVDThread::GetDiscType() == DiscIO::Platform::Triforce)
+      // {
+      //   if ((dvd_offset & 0x80000000) != 0)
+      //   {
+      //     switch (dvd_offset)
+      //     {
+      //     // Media board status (1)
+      //     case 0x80000000:
+      //       Memory::Memset(s_DIMAR, 0, s_DICMDBUF[2]);
+      //       break;
+      //     // Media board status (2)
+      //     case 0x80000020:
+      //       Memory::Memset(s_DIMAR, 0, s_DICMDBUF[2]);
+      //       break;
+      //     // Media board status (3)
+      //     case 0x80000040:
+      //       Memory::Memset(s_DIMAR, 0xFF, s_DICMDBUF[2]);
+      //       // DIMM size
+      //       Memory::Write_U32(0x20, s_DIMAR);
+      //       // GCAM signature
+      //       Memory::Write_U32(0x4743414D, s_DIMAR + 4);
+      //       break;
+      //     // Firmware status (1)
+      //     case 0x80000120:
+      //       Memory::Memset(s_DIMAR, 0x01, s_DICMDBUF[2]);
+      //       break;
+      //     // Firmware status (2)
+      //     case 0x80000140:
+      //       Memory::Memset(s_DIMAR, 0x01, s_DICMDBUF[2]);
+      //       break;
+      //     default:
+      //       ERROR_LOG_FMT(DVDINTERFACE, "Unknown Media Board Read");
+      //       break;
+      //     }
+      //   }
+      // }
       command_handled_by_thread =
           ExecuteReadCommand(dvd_offset, state.DIMAR, state.DICMDBUF[2], state.DILENGTH,
                              DiscIO::PARTITION_NONE, reply_type, &interrupt_type);

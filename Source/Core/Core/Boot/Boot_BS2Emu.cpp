@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "Common/CommonPaths.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -206,6 +208,13 @@ bool CBoot::RunApploader(bool is_wii, const DiscIO::VolumeDisc& volume,
 
   // return
   PC = PowerPC::ppcState.gpr[3];
+  // Blank out session key (https://debugmo.de/2008/05/part-2-dumping-the-media-board/)
+  if (volume.GetVolumeType() == DiscIO::Platform::Triforce)
+  {
+    u8 *skey = Memory::GetPointer(0);
+    INFO_LOG_FMT(BOOT, "Triforce: Emulated Session Key {:08x}", fmt::ptr(skey));
+    Memory::Memset(0, 0, 12);
+  }
 
   return true;
 }
@@ -225,7 +234,7 @@ void CBoot::SetupGCMemory()
   PowerPC::HostWrite_U32(console_type, 0x8000002C);
 
   // Fake the VI Init of the IPL (YAGCD 4.2.1.4)
-  PowerPC::HostWrite_U32(DiscIO::IsNTSC(SConfig::GetInstance().m_region) ? 0 : 1, 0x800000CC);
+  PowerPC::HostWrite_U32(DiscIO::IsNTSC(SConfig::GetInstance().m_region) ? 6 : 6, 0x800000CC);
 
   PowerPC::HostWrite_U32(0x01000000, 0x800000d0);  // ARAM Size. 16MB main + 4/16/32MB external
                                                    // (retail consoles have no external ARAM)

@@ -185,6 +185,8 @@ add_library(core
   HW/EXI/EXI_DeviceAD16.h
   HW/EXI/EXI_DeviceAGP.cpp
   HW/EXI/EXI_DeviceAGP.h
+  HW/EXI/EXI_DeviceBaseboard.cpp
+  HW/EXI/EXI_DeviceBaseboard.h
   HW/EXI/EXI_DeviceDummy.cpp
   HW/EXI/EXI_DeviceDummy.h
   HW/EXI/EXI_DeviceEthernet.cpp
@@ -244,6 +246,8 @@ add_library(core
   HW/ProcessorInterface.h
   HW/SI/SI_Device.cpp
   HW/SI/SI_Device.h
+  HW/SI/SI_DeviceBaseboard.h
+  HW/SI/SI_DeviceBaseboard.cpp
   HW/SI/SI_DeviceDanceMat.cpp
   HW/SI/SI_DeviceDanceMat.h
   HW/SI/SI_DeviceGBA.cpp
