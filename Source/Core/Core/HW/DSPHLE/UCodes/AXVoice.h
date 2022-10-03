@@ -151,7 +151,9 @@ static PB_TYPE* acc_pb;
 class HLEAccelerator final : public Accelerator
 {
 protected:
-  void OnEndException() override
+  void OnRawReadEndException() override {}
+  void OnRawWriteEndException() override {}
+  void OnSampleReadEndException() override
   {
     if (acc_pb->audio_addr.looping)
     {
@@ -204,7 +206,7 @@ void AcceleratorSetup(PB_TYPE* pb)
 // by the accelerator on real hardware).
 u16 AcceleratorGetSample()
 {
-  return s_accelerator->Read(acc_pb->adpcm.coefs);
+  return s_accelerator->ReadSample(acc_pb->adpcm.coefs);
 }
 
 // Reads samples from the input callback, resamples them to <count> samples at
