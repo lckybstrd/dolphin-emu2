@@ -24,6 +24,7 @@ enum class AspectMode : int
   Auto,
   AnalogWide,
   Analog,
+  Internal,
   Stretch,
 };
 
@@ -70,6 +71,7 @@ struct VideoConfig final
   bool bVSync = false;
   bool bVSyncActive = false;
   bool bWidescreenHack = false;
+  bool bIntegerScaling = false;
   AspectMode aspect_mode{};
   AspectMode suggested_aspect_mode{};
   bool bCrop = false;  // Aspect ratio controls.
