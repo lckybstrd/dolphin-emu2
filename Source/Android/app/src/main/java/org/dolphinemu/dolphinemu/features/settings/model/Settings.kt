@@ -53,12 +53,6 @@ class Settings : Closeable {
 
     fun saveSettings(context: Context?) {
         if (!isGameSpecific) {
-            if (context != null) Toast.makeText(
-                context,
-                R.string.settings_saved,
-                Toast.LENGTH_SHORT
-            ).show()
-
             MappingCommon.save()
 
             NativeConfig.save(NativeConfig.LAYER_BASE)
@@ -72,12 +66,6 @@ class Settings : Closeable {
             }
         } else {
             // custom game settings
-            if (context != null) {
-                Toast.makeText(
-                    context, context.getString(R.string.settings_saved_game_specific, gameId),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
             NativeConfig.save(NativeConfig.LAYER_LOCAL_GAME)
         }
     }
