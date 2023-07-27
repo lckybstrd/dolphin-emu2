@@ -9,6 +9,7 @@
 #include <QRegularExpression>
 
 #include "Core/Config/MainSettings.h"
+#include "Core/TimePlayed.h"
 
 #include "DiscIO/Enums.h"
 
@@ -187,6 +188,22 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
       return compression.isEmpty() ? tr("No Compression") : compression;
     }
     break;
+  case Column::TimePlayed:
+    if (role == Qt::DisplayRole || role == SORT_ROLE)
+    {
+      TimePlayed timer(game.GetGameID());
+      std::chrono::milliseconds total_time(timer.GetTimePlayed());
+      std::chrono::minutes total_minutes =
+          std::chrono::duration_cast<std::chrono::minutes>(total_time);
+      std::chrono::hours total_hours = std::chrono::duration_cast<std::chrono::hours>(total_time);
+
+      // i18n: A time displayed as hours and minutes
+      QString formatted_time = tr("%1h %2m")
+                                   .arg(total_hours.count())
+                                   .arg(total_minutes.count() - total_hours.count() * 60);
+      return formatted_time;
+    }
+    break;
   case Column::Tags:
     if (role == Qt::DisplayRole || role == SORT_ROLE)
     {
@@ -231,6 +248,8 @@ QVariant GameListModel::headerData(int section, Qt::Orientation orientation, int
     return tr("Block Size");
   case Column::Compression:
     return tr("Compression");
+  case Column::TimePlayed:
+    return tr("Time Played");
   case Column::Tags:
     return tr("Tags");
   default:

@@ -102,6 +102,7 @@ public:
 private:
   void FlushStepSyncEventLocked();
   void ExecutePendingJobs(std::unique_lock<std::mutex>& state_lock);
+  void RunTimer();
   void RunAdjacentSystems(bool running);
   bool SetStateLocked(State s);
 
@@ -133,6 +134,7 @@ private:
   bool m_state_cpu_step_instruction = false;
   Common::Event* m_state_cpu_step_instruction_sync = nullptr;
   std::queue<std::function<void()>> m_pending_jobs;
+  std::condition_variable timer_finish;
 
   Core::System& m_system;
 };

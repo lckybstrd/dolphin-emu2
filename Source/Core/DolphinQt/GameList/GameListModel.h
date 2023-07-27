@@ -58,6 +58,7 @@ public:
     FileFormat,
     BlockSize,
     Compression,
+    TimePlayed,
     Tags,
     Count,
   };
