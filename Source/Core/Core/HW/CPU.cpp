@@ -66,16 +66,13 @@ void CPUManager::ExecutePendingJobs(std::unique_lock<std::mutex>& state_lock)
   }
 }
 
-void CPUManager::RunTimer()
+void CPUManager::StartTimePlayedTimer()
 {
-  std::mutex mtx;
-  std::unique_lock<std::mutex> lck(mtx);
-
   // Steady clock for greater accuracy of timing
   std::chrono::steady_clock timer;
   auto prev_time = timer.now();
 
-  while (timer_finish.wait_for(lck, std::chrono::milliseconds(30000)) == std::cv_status::timeout)
+  while (true)
   {
     const std::string game_id = SConfig::GetInstance().GetGameID();
     TimePlayed time_played(game_id);
@@ -89,6 +86,11 @@ void CPUManager::RunTimer()
     }
 
     prev_time = curr_time;
+
+    if (m_state == State::PowerDown)
+      return;
+
+    m_time_played_finish_sync.WaitFor(std::chrono::seconds(30));
   }
 }
 
@@ -100,8 +102,8 @@ void CPUManager::Run()
   // We can't rely on PowerPC::Init doing it, since it's called from EmuThread.
   PowerPC::RoundingModeUpdated(power_pc.GetPPCState());
 
-  // Start a separate timing thread
-  auto timing = std::thread(&CPUManager::RunTimer, this);
+  // Start a separate time tracker thread
+  auto timing = std::thread(&CPUManager::StartTimePlayedTimer, this);
 
   std::unique_lock state_lock(m_state_change_lock);
   while (m_state != State::PowerDown)
@@ -198,7 +200,8 @@ void CPUManager::Run()
     }
   }
 
-  timer_finish.notify_one();
+  // m_timer_finish.notify_one();
+  m_time_played_finish_sync.Set();
   timing.join();
 
   state_lock.unlock();

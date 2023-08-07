@@ -6,34 +6,67 @@
 #include "Common/IniFile.h"
 #include "TimePlayed.h"
 
+// used for QT interface - general access to time played for games
+TimePlayed::TimePlayed()
+{
+  m_game_id = "None";
+  ini_path = File::GetUserPath(D_CONFIG_IDX) + "TimePlayed.ini";
+  ini.Load(ini_path);
+  time_list = ini.GetOrCreateSection("Time Played");
+}
+
+void FilterUnsafeCharacters(std::string& game_id)
+{
+  const std::string forbiddenChars = "\\/:?\"<>|";
+  for (auto& chr : game_id)
+  {
+    if (forbiddenChars.find(chr) != std::string::npos)
+    {
+      chr = '_';
+    }
+  }
+}
+
 TimePlayed::TimePlayed(std::string game_id)
 {
+  // filter for unsafe characters
+  FilterUnsafeCharacters(game_id);
+
   m_game_id = game_id;
+  ini_path = File::GetUserPath(D_CONFIG_IDX) + "TimePlayed.ini";
+  ini.Load(ini_path);
+  time_list = ini.GetOrCreateSection("Time Played");
 }
 
 void TimePlayed::AddTime(std::chrono::milliseconds time_emulated)
 {
-  Common::IniFile ini;
-  std::string ini_path = File::GetUserPath(D_CONFIG_IDX) + "TimePlayed.ini";
-  ini.Load(ini_path);
+  if (m_game_id == "None")
+  {
+    return;
+  }
 
-  auto time_list = ini.GetOrCreateSection("Time Played");
-  int previous_time;
-
+  u64 previous_time;
   time_list->Get(m_game_id, &previous_time);
-  // convert to int for easier readability in TimePlayed.ini
-  time_list->Set(m_game_id, previous_time + int(time_emulated.count()));
+  time_list->Set(m_game_id, previous_time + u64(time_emulated.count()));
   ini.Save(ini_path);
 }
 
 u64 TimePlayed::GetTimePlayed()
 {
-  Common::IniFile ini;
-  std::string ini_path = File::GetUserPath(D_CONFIG_IDX) + "TimePlayed.ini";
-  ini.Load(ini_path);
+  if (m_game_id == "None")
+  {
+    return 0;
+  }
 
-  auto time_list = ini.GetOrCreateSection("Time Played");
   u64 previous_time;
   time_list->Get(m_game_id, &previous_time);
+  return previous_time;
+}
+
+u64 TimePlayed::GetTimePlayed(std::string game_id)
+{
+  FilterUnsafeCharacters(game_id);
+  u64 previous_time;
+  time_list->Get(game_id, &previous_time);
   return previous_time;
 }

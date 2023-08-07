@@ -58,6 +58,7 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
     return QVariant();
 
   const UICommon::GameFile& game = *m_games[index.row()];
+  TimePlayed timer;
 
   switch (static_cast<Column>(index.column()))
   {
@@ -191,8 +192,8 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
   case Column::TimePlayed:
     if (role == Qt::DisplayRole || role == SORT_ROLE)
     {
-      TimePlayed timer(game.GetGameID());
-      std::chrono::milliseconds total_time(timer.GetTimePlayed());
+      std::string game_id = game.GetGameID();
+      std::chrono::milliseconds total_time(timer.GetTimePlayed(game_id));
       std::chrono::minutes total_minutes =
           std::chrono::duration_cast<std::chrono::minutes>(total_time);
       std::chrono::hours total_hours = std::chrono::duration_cast<std::chrono::hours>(total_time);
