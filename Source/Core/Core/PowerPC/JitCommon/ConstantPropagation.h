@@ -65,6 +65,8 @@ public:
     m_gpr_values[gpr] = value;
   }
 
+  void ClearGPR(size_t gpr) { m_gpr_values_known[gpr] = false; }
+
   void Clear() { m_gpr_values_known = BitSet32{}; }
 
 private:

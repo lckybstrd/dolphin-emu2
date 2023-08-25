@@ -1115,10 +1115,11 @@ bool Jit64::DoJit(u32 em_address, JitBlock* b, u32 nextPC)
           CompileInstruction(op);
         }
 
-        m_constant_propagation.Apply(constant_propagation_result, op.regsOut);
+        m_constant_propagation.Apply(constant_propagation_result, {});
 
         if (constant_propagation_result.gpr >= 0)
         {
+          // Mark the GPR as dirty in the register cache
           gpr.SetImmediate32(constant_propagation_result.gpr,
                              constant_propagation_result.gpr_value);
         }
