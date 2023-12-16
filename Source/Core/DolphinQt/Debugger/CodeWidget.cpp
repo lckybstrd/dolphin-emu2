@@ -7,6 +7,7 @@
 
 #include <fmt/format.h>
 
+#include <QComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
@@ -16,7 +17,10 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QStyleHints>
+#include <QTabWidget>
 #include <QTableWidget>
+#include <QToolButton>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include "Common/Event.h"
@@ -27,15 +31,23 @@
 #include "Core/PowerPC/PPCSymbolDB.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/System.h"
+#include "DolphinQt/Debugger/BranchWatchDialog.h"
 #include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/SetWindowDecorations.h"
+#include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
+
+static const QString LOCK_BUTTON_STYLESHEET = QStringLiteral(
+    "QToolButton:checked { background-color: rgb(150, 0, 0); border-style: solid;"
+    "padding: 0px; border-width: 3px; border-color: rgb(150,0,0); color: rgb(255, 255, 255);}");
 
 static const QString BOX_SPLITTER_STYLESHEET = QStringLiteral(
     "QSplitter::handle { border-top: 1px dashed black; width: 1px; margin-left: 10px; "
     "margin-right: 10px; }");
 
-CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent), m_system(Core::System::GetInstance())
+CodeWidget::CodeWidget(QWidget* parent)
+    : QDockWidget(parent), m_system(Core::System::GetInstance()),
+      m_diff_dialog(new BranchWatchDialog(m_system, m_system.GetPowerPC().GetBranchWatch(), this))
 {
   setWindowTitle(tr("Code"));
   setObjectName(QStringLiteral("code"));
@@ -57,9 +69,12 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent), m_system(Core::Sy
           [this](bool visible) { setHidden(!visible); });
 
   connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, [this] {
-    if (Core::GetState() == Core::State::Paused)
-      SetAddress(m_system.GetPPCState().pc, CodeViewWidget::SetAddressUpdate::WithoutUpdate);
-    Update();
+    if (Core::GetState() != Core::State::Running)
+    {
+      if (!m_lock_btn->isChecked())
+        SetAddress(m_system.GetPPCState().pc, CodeViewWidget::SetAddressUpdate::WithoutUpdate);
+      Update();
+    }
   });
 
   connect(Host::GetInstance(), &Host::NotifyMapLoaded, this, &CodeWidget::UpdateSymbols);
@@ -67,7 +82,14 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent), m_system(Core::Sy
   connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsCodeVisible()); });
 
-  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &CodeWidget::Update);
+  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this] {
+    if (Core::GetState() == Core::State::Paused)
+    {
+      if (!m_lock_btn->isChecked())
+        SetAddress(m_system.GetPPCState().pc, CodeViewWidget::SetAddressUpdate::WithoutUpdate);
+      Update();
+    }
+  });
 
   ConnectWidgets();
 
@@ -104,11 +126,38 @@ void CodeWidget::CreateWidgets()
   layout->setContentsMargins(2, 2, 2, 2);
   layout->setSpacing(0);
 
-  m_search_address = new QLineEdit;
-  m_code_diff = new QPushButton(tr("Diff"));
-  m_code_view = new CodeViewWidget;
+  auto* top_layout = new QHBoxLayout;
+  m_search_address = new QComboBox;
+  m_search_address->setInsertPolicy(QComboBox::InsertAtTop);
+  m_search_address->setDuplicatesEnabled(false);
+  m_search_address->setEditable(true);
+  m_search_address->lineEdit()->setPlaceholderText(tr("Search Address"));
+  m_search_address->setMaxVisibleItems(16);
+  m_search_address->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+  m_search_address->lineEdit()->setPlaceholderText(tr("Search Address"));
 
-  m_search_address->setPlaceholderText(tr("Search Address"));
+  m_save_address_btn = new QToolButton();
+  m_save_address_btn->setIcon(Resources::GetThemeIcon("debugger_save"));
+  // 24 is a standard button height.
+  m_save_address_btn->setMinimumSize(24, 24);
+
+  m_lock_btn = new QToolButton();
+  m_lock_btn->setIcon(Resources::GetThemeIcon("pause"));
+  m_lock_btn->setCheckable(true);
+  m_lock_btn->setMinimumSize(24, 24);
+  m_lock_btn->setStyleSheet(LOCK_BUTTON_STYLESHEET);
+
+  m_branch_watch_dialog = new QPushButton(tr("Branch Watch"));
+
+  top_layout->addWidget(m_search_address);
+  top_layout->addWidget(m_save_address_btn);
+  top_layout->addWidget(m_lock_btn);
+  top_layout->addWidget(m_branch_watch_dialog);
+
+  auto* right_layout = new QVBoxLayout;
+  m_code_view = new CodeViewWidget;
+  right_layout->addLayout(top_layout);
+  right_layout->addWidget(m_code_view);
 
   m_box_splitter = new QSplitter(Qt::Vertical);
   m_box_splitter->setStyleSheet(BOX_SPLITTER_STYLESHEET);
@@ -132,8 +181,22 @@ void CodeWidget::CreateWidgets()
   m_search_callstack = add_search_line_edit(tr("Callstack"), m_callstack_list);
 
   // Symbols
+  m_search_symbols = new QLineEdit;
+  auto* s_label = new QLabel(tr("Symbols"));
+
+  auto* symbols_tab = new QTabWidget;
   m_symbols_list = new QListWidget;
-  m_search_symbols = add_search_line_edit(tr("Symbols"), m_symbols_list);
+  m_note_list = new QListWidget;
+  symbols_tab->addTab(m_symbols_list, tr("Symbols"));
+  symbols_tab->addTab(m_note_list, tr("Notes"));
+
+  auto* s_layout = new QGridLayout;
+  auto* s_widget = new QWidget;
+  s_widget->setLayout(s_layout);
+  s_layout->addWidget(s_label, 0, 0);
+  s_layout->addWidget(m_search_symbols, 0, 1);
+  s_layout->addWidget(symbols_tab, 1, 0, -1, -1);
+  m_box_splitter->addWidget(s_widget);
 
   // Function calls
   m_function_calls_list = new QListWidget;
@@ -145,12 +208,14 @@ void CodeWidget::CreateWidgets()
 
   m_code_splitter = new QSplitter(Qt::Horizontal);
 
-  m_code_splitter->addWidget(m_box_splitter);
-  m_code_splitter->addWidget(m_code_view);
+  // Wrap to widget for splitter
+  QWidget* right_widget = new QWidget;
+  right_widget->setLayout(right_layout);
 
-  layout->addWidget(m_search_address, 0, 0);
-  layout->addWidget(m_code_diff, 0, 2);
-  layout->addWidget(m_code_splitter, 1, 0, -1, -1);
+  m_code_splitter->addWidget(m_box_splitter);
+  m_code_splitter->addWidget(right_widget);
+
+  layout->addWidget(m_code_splitter, 0, 0, -1, -1);
 
   QWidget* widget = new QWidget(this);
   widget->setLayout(layout);
@@ -166,22 +231,28 @@ void CodeWidget::ConnectWidgets()
           });
 #endif
 
-  connect(m_search_address, &QLineEdit::textChanged, this, &CodeWidget::OnSearchAddress);
-  connect(m_search_address, &QLineEdit::returnPressed, this, &CodeWidget::OnSearchAddress);
+  connect(m_search_address, &QComboBox::currentTextChanged, this, &CodeWidget::OnSearchAddress);
+  connect(m_search_address, &QComboBox::activated, this, &CodeWidget::OnSearchAddress);
   connect(m_search_symbols, &QLineEdit::textChanged, this, &CodeWidget::OnSearchSymbols);
+  connect(m_save_address_btn, &QPushButton::pressed, this, [this]() {
+    const QString address = QString::number(m_code_view->GetAddress(), 16);
+    if (m_search_address->findText(address) == -1)
+      m_search_address->insertItem(0, address);
+  });
+  connect(m_lock_btn, &QPushButton::toggled, this,
+          [this](bool checked) { m_code_view->OnLockAddress(checked); });
   connect(m_search_calls, &QLineEdit::textChanged, this, [this]() {
-    const Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(m_code_view->GetAddress());
-    if (symbol)
+    if (const Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(m_code_view->GetAddress()))
       UpdateFunctionCalls(symbol);
   });
   connect(m_search_callers, &QLineEdit::textChanged, this, [this]() {
-    const Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(m_code_view->GetAddress());
-    if (symbol)
+    if (const Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(m_code_view->GetAddress()))
       UpdateFunctionCallers(symbol);
   });
   connect(m_search_callstack, &QLineEdit::textChanged, this, &CodeWidget::UpdateCallstack);
 
-  connect(m_code_diff, &QPushButton::pressed, this, &CodeWidget::OnDiff);
+  connect(m_note_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectNote);
+  connect(m_branch_watch_dialog, &QPushButton::pressed, this, &CodeWidget::OnBranchWatchDialog);
 
   connect(m_symbols_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectSymbol);
   connect(m_callstack_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectCallstack);
@@ -200,6 +271,7 @@ void CodeWidget::ConnectWidgets()
       UpdateFunctionCallers(symbol);
     }
   });
+  connect(m_code_view, &CodeViewWidget::NotesChanged, this, &CodeWidget::UpdateNotes);
   connect(m_code_view, &CodeViewWidget::BreakpointsChanged, this,
           [this] { emit BreakpointsChanged(); });
   connect(m_code_view, &CodeViewWidget::UpdateCodeWidget, this, &CodeWidget::Update);
@@ -207,15 +279,14 @@ void CodeWidget::ConnectWidgets()
   connect(m_code_view, &CodeViewWidget::RequestPPCComparison, this,
           &CodeWidget::RequestPPCComparison);
   connect(m_code_view, &CodeViewWidget::ShowMemory, this, &CodeWidget::ShowMemory);
+  connect(m_code_view, &CodeViewWidget::DoAutoStep, this, &CodeWidget::DoAutoStep);
 }
 
-void CodeWidget::OnDiff()
+void CodeWidget::OnBranchWatchDialog()
 {
-  if (!m_diff_dialog)
-    m_diff_dialog = new CodeDiffDialog(this);
   m_diff_dialog->setWindowFlag(Qt::WindowMinimizeButtonHint);
   SetQWidgetWindowDecorations(m_diff_dialog);
-  m_diff_dialog->show();
+  m_diff_dialog->open();
   m_diff_dialog->raise();
   m_diff_dialog->activateWindow();
 }
@@ -223,12 +294,12 @@ void CodeWidget::OnDiff()
 void CodeWidget::OnSearchAddress()
 {
   bool good = true;
-  u32 address = m_search_address->text().toUInt(&good, 16);
+  u32 address = m_search_address->currentText().toUInt(&good, 16);
 
   QPalette palette;
   QFont font;
 
-  if (!good && !m_search_address->text().isEmpty())
+  if (!good && !m_search_address->currentText().isEmpty())
   {
     font.setBold(true);
     palette.setColor(QPalette::Text, Qt::red);
@@ -249,6 +320,7 @@ void CodeWidget::OnSearchSymbols()
 {
   m_symbol_filter = m_search_symbols->text();
   UpdateSymbols();
+  UpdateNotes();
 }
 
 void CodeWidget::OnSelectSymbol()
@@ -266,6 +338,17 @@ void CodeWidget::OnSelectSymbol()
   UpdateFunctionCallers(symbol);
 
   m_code_view->setFocus();
+}
+
+void CodeWidget::OnSelectNote()
+{
+  const auto items = m_note_list->selectedItems();
+  if (items.isEmpty())
+    return;
+
+  const u32 address = items[0]->data(Qt::UserRole).toUInt();
+
+  m_code_view->SetAddress(address, CodeViewWidget::SetAddressUpdate::WithUpdate);
 }
 
 void CodeWidget::OnSelectCallstack()
@@ -394,6 +477,32 @@ void CodeWidget::UpdateSymbols()
   }
 
   m_symbols_list->sortItems();
+
+  m_diff_dialog->UpdateSymbols();
+}
+
+void CodeWidget::UpdateNotes()
+{
+  QString selection = m_note_list->selectedItems().isEmpty() ?
+                          QStringLiteral("") :
+                          m_note_list->selectedItems()[0]->text();
+  m_note_list->clear();
+
+  for (const auto& note : g_symbolDB.Notes())
+  {
+    QString name = QString::fromStdString(note.second.name);
+
+    auto* item = new QListWidgetItem(name);
+    if (name == selection)
+      item->setSelected(true);
+
+    item->setData(Qt::UserRole, note.second.address);
+
+    if (name.toUpper().indexOf(m_symbol_filter.toUpper()) != -1)
+      m_note_list->addItem(item);
+  }
+
+  m_note_list->sortItems();
 }
 
 void CodeWidget::UpdateFunctionCalls(const Common::Symbol* symbol)
@@ -464,6 +573,8 @@ void CodeWidget::Step()
   power_pc.SetMode(old_mode);
   Core::DisplayMessage(tr("Step successful!").toStdString(), 2000);
   // Will get a UpdateDisasmDialog(), don't update the GUI here.
+
+  m_diff_dialog->Update();
 }
 
 void CodeWidget::StepOver()

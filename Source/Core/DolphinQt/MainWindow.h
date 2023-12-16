@@ -18,6 +18,7 @@ class QStackedWidget;
 class QString;
 
 class AchievementsWindow;
+class AssemblerWidget;
 class BreakpointWidget;
 struct BootParameters;
 class CheatsManager;
@@ -47,6 +48,7 @@ class RenderWidget;
 class SearchBar;
 class SettingsWindow;
 class SkylanderPortalWindow;
+class TraceWidget;
 class ThreadWidget;
 class ToolBar;
 class WatchWidget;
@@ -234,6 +236,7 @@ private:
   bool m_exit_requested = false;
   bool m_fullscreen_requested = false;
   bool m_is_screensaver_inhibited = false;
+  bool m_debug_enabled = true;
   u32 m_state_slot = 1;
   std::unique_ptr<BootParameters> m_pending_boot;
 
@@ -260,6 +263,7 @@ private:
   AchievementsWindow* m_achievements_window = nullptr;
 #endif  // USE_RETRO_ACHIEVEMENTS
 
+  AssemblerWidget* m_assembler_widget;
   BreakpointWidget* m_breakpoint_widget;
   CodeWidget* m_code_widget;
   JITWidget* m_jit_widget;
@@ -269,6 +273,7 @@ private:
   NetworkWidget* m_network_widget;
   RegisterWidget* m_register_widget;
   ThreadWidget* m_thread_widget;
+  TraceWidget* m_trace_widget;
   WatchWidget* m_watch_widget;
   CheatsManager* m_cheats_manager;
   QByteArray m_render_widget_geometry;

@@ -9,12 +9,16 @@
 #include <QDockWidget>
 
 #include "Common/CommonTypes.h"
+#include "VideoCommon/VideoEvents.h"
 
 class MemoryViewWidget;
 class QCheckBox;
 class QComboBox;
+class QGroupBox;
+class QHideEvent;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QRadioButton;
 class QShowEvent;
@@ -50,6 +54,14 @@ private:
   void CreateWidgets();
   void ConnectWidgets();
 
+  void closeEvent(QCloseEvent*) override;
+  void hideEvent(QHideEvent* event) override;
+  void showEvent(QShowEvent* event) override;
+  void RegisterAfterFrameEventCallback();
+  void RemoveAfterFrameEventCallback();
+  void AutoUpdateTable();
+  void DisasmUpdate();
+
   void LoadSettings();
   void SaveSettings();
 
@@ -65,6 +77,10 @@ private:
   void OnSetValue();
   void OnSetValueFromFile();
 
+  void OnSearchNotes();
+  void OnSelectNote();
+  void UpdateNotes();
+
   void OnDumpMRAM();
   void OnDumpExRAM();
   void OnDumpARAM();
@@ -75,12 +91,10 @@ private:
   TargetAddress GetTargetAddress() const;
   void FindValue(bool next);
 
-  void closeEvent(QCloseEvent*) override;
-  void showEvent(QShowEvent* event) override;
-
   MemoryViewWidget* m_memory_view;
   QSplitter* m_splitter;
   QComboBox* m_search_address;
+  QComboBox* m_target_address;
   QLineEdit* m_search_offset;
   QLineEdit* m_data_edit;
   QCheckBox* m_base_check;
@@ -107,4 +121,12 @@ private:
   QRadioButton* m_bp_read_only;
   QRadioButton* m_bp_write_only;
   QCheckBox* m_bp_log_check;
+
+  QGroupBox* m_note_group;
+  QLineEdit* m_search_notes;
+  QListWidget* m_note_list;
+  QString m_note_filter;
+  Common::EventHook m_VI_end_field_event;
+
+  bool m_auto_update_enabled = true;
 };

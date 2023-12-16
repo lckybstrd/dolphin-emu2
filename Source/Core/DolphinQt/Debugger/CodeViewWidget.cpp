@@ -17,6 +17,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QProxyStyle>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QStyleHints>
@@ -35,6 +36,8 @@
 #include "Core/PowerPC/PPCSymbolDB.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/System.h"
+#include "DolphinQt/Debugger/AssembleInstructionDialog.h"
+#include "DolphinQt/Debugger/EditSymbolDialog.h"
 #include "DolphinQt/Debugger/PatchInstructionDialog.h"
 #include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/SetWindowDecorations.h"
@@ -123,6 +126,24 @@ private:
   }
 };
 
+// There is no easier way to remove the forced focus outline on a cell, without breaking something
+// else.
+class NoFocusProxyStyle : public QProxyStyle
+{
+public:
+  NoFocusProxyStyle(QStyle* baseStyle = nullptr) : QProxyStyle(baseStyle) {}
+
+  void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter,
+                     const QWidget* widget) const
+  {
+    if (element == QStyle::PE_FrameFocusRect)
+    {
+      return;
+    }
+    QProxyStyle::drawPrimitive(element, option, painter, widget);
+  }
+};
+
 // "Most mouse types work in steps of 15 degrees, in which case the delta value is a multiple of
 // 120; i.e., 120 units * 1/8 = 15 degrees." (http://doc.qt.io/qt-5/qwheelevent.html#angleDelta)
 constexpr double SCROLL_FRACTION_DEGREES = 15.;
@@ -142,11 +163,19 @@ CodeViewWidget::CodeViewWidget() : m_system(Core::System::GetInstance())
   setColumnCount(CODE_VIEW_COLUMNCOUNT);
   setShowGrid(false);
   setContextMenuPolicy(Qt::CustomContextMenu);
-  setSelectionMode(QAbstractItemView::SingleSelection);
-  setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  // Selection gives us behaviors we don't want. We want m_address to always be colored as selected
+  // and PC to always be green. Added right click coloring to confirm what line the context menu
+  // applies to.  Dotted lines from being selected are removed with the stylesheet. Various issues
+  // with displaying the table headers are made much worse with NoSelection. Using hide() then
+  // show() to fix.
+  setSelectionMode(QAbstractItemView::NoSelection);
+  setStyle(new NoFocusProxyStyle());
 
   setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  // Don't want auto-scrolling to the right when clicking parameters.
+  setAutoScroll(false);
 
   verticalHeader()->hide();
   horizontalHeader()->setSectionResizeMode(CODE_VIEW_COLUMN_BREAKPOINT, QHeaderView::Fixed);
@@ -169,19 +198,9 @@ CodeViewWidget::CodeViewWidget() : m_system(Core::System::GetInstance())
 #endif
 
   connect(this, &CodeViewWidget::customContextMenuRequested, this, &CodeViewWidget::OnContextMenu);
-  connect(this, &CodeViewWidget::itemSelectionChanged, this, &CodeViewWidget::OnSelectionChanged);
   connect(&Settings::Instance(), &Settings::DebugFontChanged, this, &QWidget::setFont);
   connect(&Settings::Instance(), &Settings::DebugFontChanged, this,
           &CodeViewWidget::FontBasedSizing);
-
-  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this] {
-    m_address = m_system.GetPPCState().pc;
-    Update();
-  });
-  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, [this] {
-    m_address = m_system.GetPPCState().pc;
-    Update();
-  });
 
   connect(&Settings::Instance(), &Settings::ThemeChanged, this,
           qOverload<>(&CodeViewWidget::Update));
@@ -213,7 +232,7 @@ void CodeViewWidget::FontBasedSizing()
   horizontalHeader()->setMinimumSectionSize(rowh + 5);
   setColumnWidth(CODE_VIEW_COLUMN_BREAKPOINT, rowh + 5);
   setColumnWidth(CODE_VIEW_COLUMN_ADDRESS,
-                 fm.boundingRect(QStringLiteral("80000000")).width() + extra_text_width);
+                 fm.boundingRect(QStringLiteral("80000000 ")).width() + extra_text_width);
 
   // The longest instruction is technically 'ps_merge00' (0x10000420u), but those instructions are
   // very rare and would needlessly increase the column size, so let's go with 'rlwinm.' instead.
@@ -264,7 +283,8 @@ void CodeViewWidget::Update()
   if (m_updating)
     return;
 
-  if (Core::GetState() == Core::State::Paused)
+  Core::State state = Core::GetState();
+  if (state == Core::State::Paused || state == Core::State::Running)
   {
     Core::CPUThreadGuard guard(m_system);
     Update(&guard);
@@ -286,7 +306,6 @@ void CodeViewWidget::Update(const Core::CPUThreadGuard* guard)
 
   m_updating = true;
 
-  clearSelection();
   if (rowCount() == 0)
     setRowCount(1);
 
@@ -314,7 +333,6 @@ void CodeViewWidget::Update(const Core::CPUThreadGuard* guard)
   for (int i = 0; i < rowCount(); i++)
   {
     const u32 addr = AddressForRow(i);
-    const u32 color = debug_interface.GetColor(guard, addr);
     auto* bp_item = new QTableWidgetItem;
     auto* addr_item = new QTableWidgetItem(QStringLiteral("%1").arg(addr, 8, 16, QLatin1Char('0')));
 
@@ -323,7 +341,20 @@ void CodeViewWidget::Update(const Core::CPUThreadGuard* guard)
 
     std::string ins = (split == std::string::npos ? disas : disas.substr(0, split));
     std::string param = (split == std::string::npos ? "" : disas.substr(split + 1));
-    std::string desc = debug_interface.GetDescription(addr);
+
+    std::string desc;
+    u32 color = 0xFFFFFF;
+    const Common::Note* note = g_symbolDB.GetNoteFromAddr(addr);
+    if (note == nullptr)
+    {
+      desc = debug_interface.GetDescription(addr);
+      color = debug_interface.GetColor(guard, addr);
+    }
+    else
+    {
+      desc = note->name;
+      color = debug_interface.GetNoteColor(guard, addr);
+    }
 
     // Adds whitespace and a minimum size to ins and param. Helps to prevent frequent resizing while
     // scrolling.
@@ -340,13 +371,18 @@ void CodeViewWidget::Update(const Core::CPUThreadGuard* guard)
 
     for (auto* item : {bp_item, addr_item, ins_item, param_item, description_item, branch_item})
     {
-      item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+      item->setFlags(Qt::ItemIsEnabled);
       item->setData(Qt::UserRole, addr);
 
       if (addr == pc && item != bp_item)
       {
         item->setBackground(QColor(Qt::green));
         item->setForeground(QColor(Qt::black));
+      }
+      else if (addr == m_address && item != bp_item)
+      {
+        item->setBackground(QColor(0x0078d7));
+        item->setForeground(QColor(Qt::white));
       }
       else if (color != 0xFFFFFF)
       {
@@ -400,18 +436,24 @@ void CodeViewWidget::Update(const Core::CPUThreadGuard* guard)
     setItem(i, CODE_VIEW_COLUMN_PARAMETERS, param_item);
     setItem(i, CODE_VIEW_COLUMN_DESCRIPTION, description_item);
     setItem(i, CODE_VIEW_COLUMN_BRANCH_ARROWS, branch_item);
-
-    if (addr == GetAddress())
-    {
-      selectRow(addr_item->row());
-    }
   }
 
   CalculateBranchIndentation();
 
   g_symbolDB.FillInCallers();
 
-  repaint();
+  // Various bugs with the table header require a hide then show. Appears to work fine.
+  if (m_refresh)
+  {
+    hide();
+    show();
+    m_refresh = false;
+  }
+  else
+  {
+    update();
+  }
+
   m_updating = false;
 }
 
@@ -520,6 +562,11 @@ u32 CodeViewWidget::GetAddress() const
   return m_address;
 }
 
+void CodeViewWidget::OnLockAddress(bool lock)
+{
+  m_lock_address = lock;
+}
+
 void CodeViewWidget::SetAddress(u32 address, SetAddressUpdate update)
 {
   if (m_address == address)
@@ -554,9 +601,9 @@ void CodeViewWidget::ReplaceAddress(u32 address, ReplaceWith replace)
 void CodeViewWidget::OnContextMenu()
 {
   QMenu* menu = new QMenu(this);
-
-  const bool running = Core::GetState() != Core::State::Uninitialized;
-  const bool paused = Core::GetState() == Core::State::Paused;
+  const auto state = Core::GetState();
+  const bool paused = state == Core::State::Paused;
+  const bool playing = paused || state == Core::State::Running;
 
   const u32 addr = GetContextAddress();
 
@@ -564,6 +611,10 @@ void CodeViewWidget::OnContextMenu()
 
   auto* follow_branch_action =
       menu->addAction(tr("Follow &branch"), this, &CodeViewWidget::OnFollowBranch);
+  menu->addAction(tr("J&ump to top of function"),
+                  [this]() { CodeViewWidget::OnNavFunction(true); });
+  menu->addAction(tr("&Jump to end of function"),
+                  [this]() { CodeViewWidget::OnNavFunction(false); });
 
   menu->addSeparator();
 
@@ -581,28 +632,39 @@ void CodeViewWidget::OnContextMenu()
       menu->addAction(tr("Copy tar&get address"), this, &CodeViewWidget::OnCopyTargetAddress);
   menu->addSeparator();
 
-  auto* symbol_rename_action =
-      menu->addAction(tr("&Rename symbol"), this, &CodeViewWidget::OnRenameSymbol);
-  auto* symbol_size_action =
-      menu->addAction(tr("Set symbol &size"), this, &CodeViewWidget::OnSetSymbolSize);
-  auto* symbol_end_action =
-      menu->addAction(tr("Set symbol &end address"), this, &CodeViewWidget::OnSetSymbolEndAddress);
+  auto* symbols_menu = menu->addMenu(tr("Modify Symbols"));
+
+  auto* function_action =
+      symbols_menu->addAction(tr("&Add function symbol"), this, &CodeViewWidget::OnAddFunction);
+  auto* symbol_edit_action =
+      symbols_menu->addAction(tr("&Edit symbol"), this, &CodeViewWidget::OnEditSymbol);
+  auto* symbol_delete_action =
+      symbols_menu->addAction(tr("&Delete symbol"), this, &CodeViewWidget::OnDeleteSymbol);
+
+  symbols_menu->addSeparator();
+
+  symbols_menu->addAction(tr("Add Note"), this, &CodeViewWidget::OnAddNote);
+  symbols_menu->addAction(tr("Edit Note"), this, &CodeViewWidget::OnEditNote);
+  symbols_menu->addAction(tr("Delete Note"), this, &CodeViewWidget::OnDeleteNote);
+
   menu->addSeparator();
 
   menu->addAction(tr("Run &To Here"), this, &CodeViewWidget::OnRunToHere);
-  auto* function_action =
-      menu->addAction(tr("&Add function"), this, &CodeViewWidget::OnAddFunction);
   auto* ppc_action = menu->addAction(tr("PPC vs Host"), this, &CodeViewWidget::OnPPCComparison);
   auto* insert_blr_action = menu->addAction(tr("&Insert blr"), this, &CodeViewWidget::OnInsertBLR);
   auto* insert_nop_action = menu->addAction(tr("Insert &nop"), this, &CodeViewWidget::OnInsertNOP);
   auto* replace_action =
       menu->addAction(tr("Re&place instruction"), this, &CodeViewWidget::OnReplaceInstruction);
+  auto* assemble_action =
+      menu->addAction(tr("Assemble instruction"), this, &CodeViewWidget::OnAssembleInstruction);
   auto* restore_action =
       menu->addAction(tr("Restore instruction"), this, &CodeViewWidget::OnRestoreInstruction);
 
-  QString target;
+  QString reg_qstr;
+  std::string reg_str;
   bool valid_load_store = false;
   bool follow_branch_enabled = false;
+
   if (paused)
   {
     Core::CPUThreadGuard guard(m_system);
@@ -615,7 +677,10 @@ void CodeViewWidget::OnContextMenu()
       const auto target_end = std::find(target_it, disasm.end(), ',');
 
       if (target_it != disasm.end() && target_end != disasm.end())
-        target = QString::fromStdString(std::string{target_it + 1, target_end});
+      {
+        reg_str = std::string{target_it + 1, target_end};
+        reg_qstr = QString::fromStdString(reg_str);
+      }
     }
 
     valid_load_store = IsInstructionLoadStore(disasm);
@@ -625,119 +690,41 @@ void CodeViewWidget::OnContextMenu()
 
   auto* run_until_menu = menu->addMenu(tr("Run until (ignoring breakpoints)"));
   // i18n: One of the options shown below "Run until (ignoring breakpoints)"
-  run_until_menu->addAction(tr("%1's value is hit").arg(target), this,
-                            [this] { AutoStep(CodeTrace::AutoStop::Always); });
+  run_until_menu->addAction(tr("%1's value is hit").arg(reg_qstr), this, [this, reg_str]() {
+    emit DoAutoStep(CodeTrace::AutoStop::Always, reg_str);
+  });
   // i18n: One of the options shown below "Run until (ignoring breakpoints)"
-  run_until_menu->addAction(tr("%1's value is used").arg(target), this,
-                            [this] { AutoStep(CodeTrace::AutoStop::Used); });
+  run_until_menu->addAction(tr("%1's value is used").arg(reg_qstr), this, [this, reg_str]() {
+    emit DoAutoStep(CodeTrace::AutoStop::Used, reg_str);
+  });
   // i18n: One of the options shown below "Run until (ignoring breakpoints)"
-  run_until_menu->addAction(tr("%1's value is changed").arg(target),
-                            [this] { AutoStep(CodeTrace::AutoStop::Changed); });
+  run_until_menu->addAction(tr("%1's value is changed").arg(reg_qstr), [this, reg_str]() {
+    emit DoAutoStep(CodeTrace::AutoStop::Changed, reg_str);
+  });
 
-  run_until_menu->setEnabled(!target.isEmpty());
+  run_until_menu->setEnabled(!reg_qstr.isEmpty());
   follow_branch_action->setEnabled(follow_branch_enabled);
 
-  for (auto* action : {copy_address_action, copy_line_action, copy_hex_action, function_action,
-                       ppc_action, insert_blr_action, insert_nop_action, replace_action})
+  for (auto* action :
+       {copy_address_action, copy_line_action, copy_hex_action, function_action, ppc_action,
+        insert_blr_action, insert_nop_action, replace_action, assemble_action})
   {
-    action->setEnabled(running);
+    action->setEnabled(playing);
   }
 
-  for (auto* action : {symbol_rename_action, symbol_size_action, symbol_end_action})
-    action->setEnabled(has_symbol);
+  symbol_edit_action->setEnabled(has_symbol);
+  symbol_delete_action->setEnabled(has_symbol);
 
   for (auto* action : {copy_target_memory, show_target_memory})
   {
     action->setEnabled(valid_load_store);
   }
 
-  restore_action->setEnabled(running &&
+  restore_action->setEnabled(playing &&
                              m_system.GetPowerPC().GetDebugInterface().HasEnabledPatch(addr));
 
   menu->exec(QCursor::pos());
   Update();
-}
-
-void CodeViewWidget::AutoStep(CodeTrace::AutoStop option)
-{
-  // Autosteps and follows value in the target (left-most) register. The Used and Changed options
-  // silently follows target through reshuffles in memory and registers and stops on use or update.
-
-  Core::CPUThreadGuard guard(m_system);
-
-  CodeTrace code_trace;
-  bool repeat = false;
-
-  QMessageBox msgbox(QMessageBox::NoIcon, tr("Run until"), {}, QMessageBox::Cancel);
-  QPushButton* run_button = msgbox.addButton(tr("Keep Running"), QMessageBox::AcceptRole);
-  // Not sure if we want default to be cancel. Spacebar can let you quickly continue autostepping if
-  // Yes.
-
-  do
-  {
-    // Run autostep then update codeview
-    const AutoStepResults results = code_trace.AutoStepping(guard, repeat, option);
-    emit Host::GetInstance()->UpdateDisasmDialog();
-    repeat = true;
-
-    // Invalid instruction, 0 means no step executed.
-    if (results.count == 0)
-      return;
-
-    // Status report
-    if (results.reg_tracked.empty() && results.mem_tracked.empty())
-    {
-      QMessageBox::warning(
-          this, tr("Overwritten"),
-          tr("Target value was overwritten by current instruction.\nInstructions executed:   %1")
-              .arg(QString::number(results.count)),
-          QMessageBox::Cancel);
-      return;
-    }
-    else if (results.timed_out)
-    {
-      // Can keep running and try again after a time out.
-      msgbox.setText(
-          tr("<font color='#ff0000'>AutoStepping timed out. Current instruction is irrelevant."));
-    }
-    else
-    {
-      msgbox.setText(tr("Value tracked to current instruction."));
-    }
-
-    // Mem_tracked needs to track each byte individually, so a tracked word-sized value would have
-    // four entries. The displayed memory list needs to be shortened so it's not a huge list of
-    // bytes. Assumes adjacent bytes represent a word or half-word and removes the redundant bytes.
-    std::set<u32> mem_out;
-    auto iter = results.mem_tracked.begin();
-
-    while (iter != results.mem_tracked.end())
-    {
-      const u32 address = *iter;
-      mem_out.insert(address);
-
-      for (u32 i = 1; i <= 3; i++)
-      {
-        if (results.mem_tracked.count(address + i))
-          iter++;
-        else
-          break;
-      }
-
-      iter++;
-    }
-
-    const QString msgtext =
-        tr("Instructions executed:   %1\nValue contained in:\nRegisters:   %2\nMemory:   %3")
-            .arg(QString::number(results.count))
-            .arg(QString::fromStdString(fmt::format("{}", fmt::join(results.reg_tracked, ", "))))
-            .arg(QString::fromStdString(fmt::format("{:#x}", fmt::join(mem_out, ", "))));
-
-    msgbox.setInformativeText(msgtext);
-    SetQWidgetWindowDecorations(&msgbox);
-    msgbox.exec();
-
-  } while (msgbox.clickedButton() == (QAbstractButton*)run_button);
 }
 
 void CodeViewWidget::OnCopyAddress()
@@ -870,6 +857,13 @@ void CodeViewWidget::OnPPCComparison()
 void CodeViewWidget::OnAddFunction()
 {
   const u32 addr = GetContextAddress();
+  int confirm = QMessageBox::warning(this, tr("Add Function Symbol"),
+                                     tr("Force new function symbol to be made at ") +
+                                         QString::number(addr, 16) + tr("?"),
+                                     QMessageBox::Ok | QMessageBox::Cancel);
+
+  if (confirm != QMessageBox::Ok)
+    return;
 
   Core::CPUThreadGuard guard(m_system);
 
@@ -907,26 +901,72 @@ void CodeViewWidget::OnFollowBranch()
   SetAddress(branch_addr, SetAddressUpdate::WithDetailedUpdate);
 }
 
-void CodeViewWidget::OnRenameSymbol()
+void CodeViewWidget::OnEditSymbol()
 {
   const u32 addr = GetContextAddress();
+  Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(addr);
 
-  Common::Symbol* const symbol = g_symbolDB.GetSymbolFromAddr(addr);
-
-  if (!symbol)
+  if (symbol == nullptr)
     return;
 
-  bool good;
-  const QString name =
-      QInputDialog::getText(this, tr("Rename symbol"), tr("Symbol name:"), QLineEdit::Normal,
-                            QString::fromStdString(symbol->name), &good, Qt::WindowCloseButtonHint);
+  std::string name = symbol->name;
+  u32 size = symbol->size;
+  const u32 symbol_address = symbol->address;
 
-  if (good && !name.isEmpty())
-  {
-    symbol->Rename(name.toStdString());
-    emit SymbolsChanged();
-    Update();
-  }
+  EditSymbolDialog* dialog = new EditSymbolDialog(this, symbol_address, size, name);
+
+  if (dialog->exec() != QDialog::Accepted)
+    return;
+
+  if (symbol->name != name)
+    symbol->Rename(name);
+
+  Core::CPUThreadGuard guard(m_system);
+
+  if (symbol->size != size)
+    PPCAnalyst::ReanalyzeFunction(guard, symbol->address, *symbol, size);
+
+  emit SymbolsChanged();
+  Update(&guard);
+}
+
+void CodeViewWidget::OnDeleteSymbol()
+{
+  const u32 addr = GetContextAddress();
+  Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(addr);
+  if (symbol == nullptr)
+    return;
+
+  int confirm =
+      QMessageBox::warning(this, tr("Delete Function Symbol"),
+                           tr("Delete function symbol: ") + QString::fromStdString(symbol->name) +
+                               tr("\nat ") + QString::number(addr, 16) + tr("?"),
+                           QMessageBox::Ok | QMessageBox::Cancel);
+
+  if (confirm != QMessageBox::Ok)
+    return;
+
+  g_symbolDB.DeleteFunction(symbol->address);
+  Core::CPUThreadGuard guard(m_system);
+  emit SymbolsChanged();
+  Update(&guard);
+}
+
+void CodeViewWidget::OnAddNote()
+{
+  const u32 note_address = GetContextAddress();
+  std::string name = "";
+  u32 size = 4;
+
+  EditSymbolDialog* dialog = new EditSymbolDialog(this, note_address, size, name);
+
+  if (dialog->exec() != QDialog::Accepted)
+    return;
+
+  Core::CPUThreadGuard guard(m_system);
+  m_system.GetPowerPC().GetDebugInterface().UpdateNote(note_address, size, name);
+  emit NotesChanged();
+  Update(&guard);
 }
 
 void CodeViewWidget::OnSelectionChanged()
@@ -942,81 +982,113 @@ void CodeViewWidget::OnSelectionChanged()
   }
 }
 
-void CodeViewWidget::OnSetSymbolSize()
+void CodeViewWidget::OnEditNote()
 {
-  const u32 addr = GetContextAddress();
+  const u32 context_address = GetContextAddress();
+  Common::Note* note = g_symbolDB.GetNoteFromAddr(context_address);
 
-  Common::Symbol* const symbol = g_symbolDB.GetSymbolFromAddr(addr);
+  std::string name = "";
+  u32 size = 4;
+  u32 note_address;
 
-  if (!symbol)
-    return;
+  if (note != nullptr)
+  {
+    name = note->name;
+    size = note->size;
+    note_address = note->address;
+  }
+  else
+  {
+    note_address = context_address;
+  }
 
-  bool good;
-  const int size =
-      QInputDialog::getInt(this, tr("Rename symbol"),
-                           tr("Set symbol size (%1):").arg(QString::fromStdString(symbol->name)),
-                           symbol->size, 1, 0xFFFF, 1, &good, Qt::WindowCloseButtonHint);
+  EditSymbolDialog* dialog = new EditSymbolDialog(this, note_address, size, name);
 
-  if (!good)
+  if (dialog->exec() != QDialog::Accepted)
     return;
 
   Core::CPUThreadGuard guard(m_system);
+  if (note == nullptr || note->name != name || note->size != size)
+    m_system.GetPowerPC().GetDebugInterface().UpdateNote(note_address, size, name);
 
-  PPCAnalyst::ReanalyzeFunction(guard, symbol->address, *symbol, size);
-  emit SymbolsChanged();
   Update(&guard);
+  emit NotesChanged();
 }
 
-void CodeViewWidget::OnSetSymbolEndAddress()
+void CodeViewWidget::OnDeleteNote()
 {
-  const u32 addr = GetContextAddress();
+  const u32 context_address = GetContextAddress();
+  Common::Note* note = g_symbolDB.GetNoteFromAddr(context_address);
 
-  Common::Symbol* const symbol = g_symbolDB.GetSymbolFromAddr(addr);
-
-  if (!symbol)
+  if (note == nullptr)
     return;
 
-  bool good;
-  const QString name = QInputDialog::getText(
-      this, tr("Set symbol end address"),
-      tr("Symbol (%1) end address:").arg(QString::fromStdString(symbol->name)), QLineEdit::Normal,
-      QStringLiteral("%1").arg(addr + symbol->size, 8, 16, QLatin1Char('0')), &good,
-      Qt::WindowCloseButtonHint);
+  int confirm = QMessageBox::warning(this, tr("Delete Note"),
+                                     tr("Delete Note: ") + QString::fromStdString(note->name) +
+                                         tr("at ") + QString::number(context_address, 16) + tr("?"),
+                                     QMessageBox::Ok | QMessageBox::Cancel);
 
-  const u32 address = name.toUInt(&good, 16);
-
-  if (!good)
+  if (confirm != QMessageBox::Ok)
     return;
 
   Core::CPUThreadGuard guard(m_system);
+  g_symbolDB.DeleteNote(note->address);
 
-  PPCAnalyst::ReanalyzeFunction(guard, symbol->address, *symbol, address - symbol->address);
-  emit SymbolsChanged();
   Update(&guard);
+  emit NotesChanged();
 }
 
 void CodeViewWidget::OnReplaceInstruction()
 {
-  Core::CPUThreadGuard guard(m_system);
+  DoPatchInstruction(false);
+}
 
-  const u32 addr = GetContextAddress();
+void CodeViewWidget::OnAssembleInstruction()
+{
+  DoPatchInstruction(true);
+}
 
-  if (!PowerPC::MMU::HostIsInstructionRAMAddress(guard, addr))
-    return;
-
-  const PowerPC::TryReadInstResult read_result =
-      guard.GetSystem().GetMMU().TryReadInstruction(addr);
-  if (!read_result.valid)
-    return;
-
+void CodeViewWidget::DoPatchInstruction(bool assemble)
+{
   auto& debug_interface = m_system.GetPowerPC().GetDebugInterface();
-  PatchInstructionDialog dialog(this, addr, debug_interface.ReadInstruction(guard, addr));
+  const u32 addr = GetContextAddress();
+  u32 mem_val = 0;
 
-  SetQWidgetWindowDecorations(&dialog);
-  if (dialog.exec() == QDialog::Accepted)
   {
-    debug_interface.SetPatch(guard, addr, dialog.GetCode());
-    Update(&guard);
+    Core::CPUThreadGuard guard(m_system);
+
+    if (!PowerPC::MMU::HostIsInstructionRAMAddress(guard, addr))
+      return;
+    const PowerPC::TryReadInstResult read_result =
+        guard.GetSystem().GetMMU().TryReadInstruction(addr);
+    if (!read_result.valid)
+      return;
+
+    mem_val = debug_interface.ReadInstruction(guard, addr);
+  }
+
+  // Don't think dialogs should be in a guard.
+  if (assemble)
+  {
+    AssembleInstructionDialog dialog(this, addr, mem_val);
+    SetQWidgetWindowDecorations(&dialog);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+      Core::CPUThreadGuard guard(m_system);
+      debug_interface.SetPatch(guard, addr, dialog.GetCode());
+      Update(&guard);
+    }
+  }
+  else
+  {
+    PatchInstructionDialog dialog(this, addr, mem_val);
+    SetQWidgetWindowDecorations(&dialog);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+      Core::CPUThreadGuard guard(m_system);
+      debug_interface.SetPatch(guard, addr, dialog.GetCode());
+      Update(&guard);
+    }
   }
 }
 
@@ -1030,8 +1102,33 @@ void CodeViewWidget::OnRestoreInstruction()
   Update(&guard);
 }
 
+void CodeViewWidget::OnNavFunction(bool up)
+{
+  u32 address = GetContextAddress();
+  {
+    Core::CPUThreadGuard guard(m_system);
+    int distance = 0;
+
+    // Distance to prevent it from going too far out of range, if it's outside of any function. Not
+    // sure what a good value is.
+    while (PowerPC::MMU::HostIsInstructionRAMAddress(guard, address) && distance != 5000)
+    {
+      if (PowerPC::MMU::HostRead_U32(guard, address) == 0x4e800020)
+      {
+        address += up ? 0x4 : -0x4;
+        break;
+      }
+
+      distance += 1;
+      address += up ? -0x4 : 0x4;
+    }
+  }
+  SetAddress(address, SetAddressUpdate::WithUpdate);
+}
+
 void CodeViewWidget::resizeEvent(QResizeEvent*)
 {
+  m_refresh = true;
   Update();
 }
 
@@ -1075,24 +1172,32 @@ void CodeViewWidget::wheelEvent(QWheelEvent* event)
 
 void CodeViewWidget::mousePressEvent(QMouseEvent* event)
 {
-  auto* item = itemAt(event->pos());
-  if (item == nullptr)
+  // itemPressed signal has poor responsiveness to fast clicking.
+  auto* item_sel = itemAt(event->pos());
+
+  if (item_sel == nullptr)
     return;
 
-  const u32 addr = item->data(Qt::UserRole).toUInt();
+  const int row = item_sel->row();
+  const u32 addr = item_sel->data(Qt::UserRole).toUInt();
 
   m_context_address = addr;
 
   switch (event->button())
   {
   case Qt::LeftButton:
-    if (column(item) == CODE_VIEW_COLUMN_BREAKPOINT)
+    if (column(item_sel) == CODE_VIEW_COLUMN_BREAKPOINT)
       ToggleBreakpoint();
     else
       SetAddress(addr, SetAddressUpdate::WithDetailedUpdate);
 
     Update();
     break;
+  case Qt::RightButton:
+    for (int i = 1; i <= 4; i++)
+    {
+      item(row, i)->setBackground(QColor(Qt::cyan));
+    }
   default:
     break;
   }
@@ -1100,7 +1205,8 @@ void CodeViewWidget::mousePressEvent(QMouseEvent* event)
 
 void CodeViewWidget::showEvent(QShowEvent* event)
 {
-  Update();
+  if (!m_refresh)
+    Update();
 }
 
 void CodeViewWidget::ToggleBreakpoint()

@@ -75,6 +75,8 @@
 #define DUMP_AUDIO_DIR "Audio"
 #define DUMP_DSP_DIR "DSP"
 #define DUMP_SSL_DIR "SSL"
+#define DUMP_DEBUG_DIR "Debug"
+#define DUMP_DEBUG_BRANCHWATCH_DIR "BranchWatch"
 #define LOGS_DIR "Logs"
 #define MAIL_LOGS_DIR "Mail"
 #define SHADERS_DIR "Shaders"
@@ -94,6 +96,7 @@
 #define DYNAMICINPUT_DIR "DynamicInputTextures"
 #define GRAPHICSMOD_DIR "GraphicMods"
 #define WIISDSYNC_DIR "WiiSDSync"
+#define ASSEMBLY_DIR "SavedAssembly"
 
 // This one is only used to remove it if it was present
 #define SHADERCACHE_LEGACY_DIR "ShaderCache"

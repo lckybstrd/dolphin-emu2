@@ -469,6 +469,14 @@ void MenuBar::AddViewMenu()
   connect(&Settings::Instance(), &Settings::ThreadsVisibilityChanged, m_show_threads,
           &QAction::setChecked);
 
+  m_show_trace = view_menu->addAction(tr("&Trace"));
+  m_show_trace->setCheckable(true);
+  m_show_trace->setChecked(Settings::Instance().IsTraceVisible());
+
+  connect(m_show_trace, &QAction::toggled, &Settings::Instance(), &Settings::SetTraceVisible);
+  connect(&Settings::Instance(), &Settings::TraceVisibilityChanged, m_show_trace,
+          &QAction::setChecked);
+
   // i18n: This kind of "watch" is used for watching emulated memory.
   // It's not related to timekeeping devices.
   m_show_watch = view_menu->addAction(tr("&Watch"));
@@ -509,6 +517,14 @@ void MenuBar::AddViewMenu()
   m_show_jit->setChecked(Settings::Instance().IsJITVisible());
   connect(m_show_jit, &QAction::toggled, &Settings::Instance(), &Settings::SetJITVisible);
   connect(&Settings::Instance(), &Settings::JITVisibilityChanged, m_show_jit, &QAction::setChecked);
+
+  m_show_assembler = view_menu->addAction(tr("&Assembler"));
+  m_show_assembler->setCheckable(true);
+  m_show_assembler->setChecked(Settings::Instance().IsAssemblerVisible());
+  connect(m_show_assembler, &QAction::toggled, &Settings::Instance(),
+          &Settings::SetAssemblerVisible);
+  connect(&Settings::Instance(), &Settings::AssemblerVisibilityChanged, m_show_assembler,
+          &QAction::setChecked);
 
   view_menu->addSeparator();
 

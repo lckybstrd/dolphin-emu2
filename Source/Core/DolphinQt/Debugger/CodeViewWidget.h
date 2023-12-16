@@ -39,6 +39,7 @@ public:
   ~CodeViewWidget() override;
 
   u32 GetAddress() const;
+  void OnLockAddress(bool lock);
   u32 GetContextAddress() const;
   void SetAddress(u32 address, SetAddressUpdate update);
 
@@ -56,8 +57,10 @@ signals:
   void RequestPPCComparison(u32 addr);
   void ShowMemory(u32 address);
   void SymbolsChanged();
+  void NotesChanged();
   void BreakpointsChanged();
   void UpdateCodeWidget();
+  void DoAutoStep(CodeTrace::AutoStop option, std::string reg);
 
 private:
   enum class ReplaceWith
@@ -78,6 +81,7 @@ private:
 
   void AutoStep(CodeTrace::AutoStop option = CodeTrace::AutoStop::Always);
   void OnFollowBranch();
+  void OnNavFunction(bool up);
   void OnCopyAddress();
   void OnCopyTargetAddress();
   void OnShowInMemory();
@@ -85,16 +89,20 @@ private:
   void OnCopyFunction();
   void OnCopyCode();
   void OnCopyHex();
-  void OnRenameSymbol();
   void OnSelectionChanged();
-  void OnSetSymbolSize();
-  void OnSetSymbolEndAddress();
   void OnRunToHere();
   void OnAddFunction();
+  void OnEditSymbol();
+  void OnDeleteSymbol();
+  void OnAddNote();
   void OnPPCComparison();
+  void OnEditNote();
+  void OnDeleteNote();
   void OnInsertBLR();
   void OnInsertNOP();
   void OnReplaceInstruction();
+  void OnAssembleInstruction();
+  void DoPatchInstruction(bool assemble);
   void OnRestoreInstruction();
 
   void CalculateBranchIndentation();
@@ -104,7 +112,9 @@ private:
   bool m_updating = false;
 
   u32 m_address = 0;
+  bool m_lock_address = false;
   u32 m_context_address = 0;
+  bool m_refresh = false;
 
   std::vector<CodeViewBranch> m_branches;
 

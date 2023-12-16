@@ -162,10 +162,14 @@ public:
   bool IsCodeVisible() const;
   void SetMemoryVisible(bool enabled);
   bool IsMemoryVisible() const;
+  void SetTraceVisible(bool enabled);
+  bool IsTraceVisible() const;
   void SetNetworkVisible(bool enabled);
   bool IsNetworkVisible() const;
   void SetJITVisible(bool enabled);
   bool IsJITVisible() const;
+  void SetAssemblerVisible(bool enabled);
+  bool IsAssemblerVisible() const;
   QFont GetDebugFont() const;
   void SetDebugFont(QFont font);
 
@@ -211,8 +215,10 @@ signals:
   void BreakpointsVisibilityChanged(bool visible);
   void CodeVisibilityChanged(bool visible);
   void MemoryVisibilityChanged(bool visible);
+  void TraceVisibilityChanged(bool visible);
   void NetworkVisibilityChanged(bool visible);
   void JITVisibilityChanged(bool visible);
+  void AssemblerVisibilityChanged(bool visible);
   void DebugModeToggled(bool enabled);
   void DebugFontChanged(QFont font);
   void AutoUpdateTrackChanged(const QString& mode);

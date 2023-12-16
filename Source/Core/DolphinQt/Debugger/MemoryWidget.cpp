@@ -17,7 +17,9 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -32,6 +34,8 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/AddressSpace.h"
+#include "Core/PowerPC/PPCSymbolDB.h"
+#include "Core/PowerPC/PowerPC.h"
 #include "Core/System.h"
 #include "DolphinQt/Debugger/MemoryViewWidget.h"
 #include "DolphinQt/Host.h"
@@ -39,6 +43,14 @@
 #include "DolphinQt/Settings.h"
 
 using Type = MemoryViewWidget::Type;
+
+static bool IsInstructionLoadStore(std::string_view ins)
+{
+  // Could add check for context address being near PC, because we need gprs to be correct for the
+  // load/store.
+  return (ins.starts_with('l') && !ins.starts_with("li")) || ins.starts_with("st") ||
+         ins.starts_with("psq_l") || ins.starts_with("psq_s");
+}
 
 MemoryWidget::MemoryWidget(QWidget* parent) : QDockWidget(parent)
 {
@@ -65,8 +77,9 @@ MemoryWidget::MemoryWidget(QWidget* parent) : QDockWidget(parent)
   connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsMemoryVisible()); });
 
-  connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &MemoryWidget::Update);
-  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &MemoryWidget::Update);
+  // Not really necessary
+  // connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &MemoryWidget::Update);
+  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &MemoryWidget::DisasmUpdate);
 
   LoadSettings();
 
@@ -102,18 +115,19 @@ void MemoryWidget::CreateWidgets()
   m_search_address->setInsertPolicy(QComboBox::InsertAtTop);
   m_search_address->setDuplicatesEnabled(false);
   m_search_address->setEditable(true);
+  m_search_address->lineEdit()->setPlaceholderText(tr("Search Address"));
   m_search_address->setMaxVisibleItems(8);
   m_search_offset = new QLineEdit;
 
   m_search_offset->setMaxLength(9);
-  m_search_address->setPlaceholderText(tr("Search Address"));
   m_search_offset->setPlaceholderText(tr("Offset"));
 
   m_address_splitter->addWidget(m_search_address);
   m_address_splitter->addWidget(m_search_offset);
   m_address_splitter->setHandleWidth(1);
   m_address_splitter->setCollapsible(0, false);
-  m_address_splitter->setStretchFactor(1, 2);
+  m_address_splitter->setStretchFactor(0, 3);
+  m_address_splitter->setStretchFactor(1, 1);
 
   auto* input_layout = new QHBoxLayout;
   m_data_edit = new QLineEdit;
@@ -128,6 +142,16 @@ void MemoryWidget::CreateWidgets()
 
   input_layout->addWidget(m_data_edit);
   input_layout->addWidget(m_base_check);
+
+  auto* target_layout = new QHBoxLayout;
+  QLabel* target_label = new QLabel(tr("PC Target:   "), this);
+  m_target_address = new QComboBox();
+  m_target_address->setDuplicatesEnabled(false);
+  m_target_address->setEditable(false);
+  m_target_address->setMaxCount(10);
+  m_target_address->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  target_layout->addWidget(target_label);
+  target_layout->addWidget(m_target_address);
 
   // Input types
   m_input_combo = new QComboBox;
@@ -241,6 +265,17 @@ void MemoryWidget::CreateWidgets()
   bp_layout->addWidget(m_bp_log_check);
   bp_layout->setSpacing(1);
 
+  // Notes
+  m_note_group = new QGroupBox(tr("Notes"));
+  auto* note_layout = new QVBoxLayout;
+  m_note_list = new QListWidget;
+  m_search_notes = new QLineEdit;
+  m_search_notes->setPlaceholderText(tr("Filter Note List"));
+
+  m_note_group->setLayout(note_layout);
+  note_layout->addWidget(m_note_list);
+  note_layout->addWidget(m_search_notes);
+
   // Sidebar
   auto* sidebar = new QWidget;
   auto* sidebar_layout = new QVBoxLayout;
@@ -248,6 +283,28 @@ void MemoryWidget::CreateWidgets()
   // Sidebar top menu
   QMenuBar* menubar = new QMenuBar(sidebar);
   menubar->setNativeMenuBar(false);
+
+  QMenu* menu_view = new QMenu(tr("&View"), menubar);
+  auto* show_notes =
+      menu_view->addAction(tr("&Show symbols and notes"), this,
+                           [this](bool checked) { m_memory_view->ShowSymbols(checked); });
+  show_notes->setCheckable(true);
+  show_notes->setChecked(true);
+  menubar->addMenu(menu_view);
+
+  auto* auto_update_action =
+      menu_view->addAction(tr("Auto update memory values"), this,
+                           [this](bool checked) { m_auto_update_enabled = checked; });
+  auto_update_action->setCheckable(true);
+  auto_update_action->setChecked(true);
+
+  auto* highlight_update_action =
+      menu_view->addAction(tr("Highlight recently changed values"), this,
+                           [this](bool checked) { m_memory_view->ToggleHighlights(checked); });
+  highlight_update_action->setCheckable(true);
+  highlight_update_action->setChecked(true);
+
+  menu_view->addAction(tr("Highlight color"), this, [this] { m_memory_view->SetHighlightColor(); });
 
   QMenu* menu_import = new QMenu(tr("&Import"), menubar);
   menu_import->addAction(tr("&Load file to current address"), this,
@@ -270,6 +327,7 @@ void MemoryWidget::CreateWidgets()
   sidebar_layout->addItem(new QSpacerItem(1, 10));
   sidebar_layout->addWidget(m_data_preview);
   sidebar_layout->addWidget(m_set_value);
+  sidebar_layout->addLayout(target_layout);
   sidebar_layout->addItem(new QSpacerItem(1, 10));
   sidebar_layout->addWidget(search_group);
   sidebar_layout->addItem(new QSpacerItem(1, 10));
@@ -278,6 +336,7 @@ void MemoryWidget::CreateWidgets()
   sidebar_layout->addWidget(address_space_group);
   sidebar_layout->addItem(new QSpacerItem(1, 10));
   sidebar_layout->addWidget(bp_group);
+  sidebar_layout->addWidget(m_note_group);
   sidebar_layout->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Expanding));
 
   // Splitter
@@ -299,6 +358,7 @@ void MemoryWidget::CreateWidgets()
   auto* widget = new QWidget;
   widget->setLayout(layout);
   setWidget(widget);
+  UpdateNotes();
 }
 
 void MemoryWidget::ConnectWidgets()
@@ -310,7 +370,12 @@ void MemoryWidget::ConnectWidgets()
   connect(m_input_combo, &QComboBox::currentIndexChanged, this,
           &MemoryWidget::ValidateAndPreviewInputValue);
   connect(m_set_value, &QPushButton::clicked, this, &MemoryWidget::OnSetValue);
-
+  connect(m_target_address, &QComboBox::activated, this, [this] {
+    bool ok = false;
+    const u32 addr = m_target_address->currentData().toUInt(&ok);
+    if (ok)
+      m_memory_view->SetAddress(addr);
+  });
   connect(m_find_next, &QPushButton::clicked, this, &MemoryWidget::OnFindNextValue);
   connect(m_find_previous, &QPushButton::clicked, this, &MemoryWidget::OnFindPreviousValue);
 
@@ -333,6 +398,10 @@ void MemoryWidget::ConnectWidgets()
   connect(m_bp_log_check, &QCheckBox::toggled, this, &MemoryWidget::OnBPLogChanged);
   connect(m_memory_view, &MemoryViewWidget::BreakpointsChanged, this,
           &MemoryWidget::BreakpointsChanged);
+
+  connect(m_note_list, &QListWidget::itemClicked, this, &MemoryWidget::OnSelectNote);
+  connect(m_memory_view, &MemoryViewWidget::NotesChanged, this, &MemoryWidget::UpdateNotes);
+  connect(m_search_notes, &QLineEdit::textChanged, this, &MemoryWidget::OnSearchNotes);
   connect(m_memory_view, &MemoryViewWidget::ShowCode, this, &MemoryWidget::ShowCode);
   connect(m_memory_view, &MemoryViewWidget::RequestWatch, this, &MemoryWidget::RequestWatch);
 }
@@ -344,7 +413,68 @@ void MemoryWidget::closeEvent(QCloseEvent*)
 
 void MemoryWidget::showEvent(QShowEvent* event)
 {
+  RegisterAfterFrameEventCallback();
   Update();
+}
+
+void MemoryWidget::hideEvent(QHideEvent* event)
+{
+  RemoveAfterFrameEventCallback();
+}
+
+void MemoryWidget::RegisterAfterFrameEventCallback()
+{
+  m_VI_end_field_event = VIEndFieldEvent::Register([this] { AutoUpdateTable(); }, "MemoryWidget");
+}
+
+void MemoryWidget::RemoveAfterFrameEventCallback()
+{
+  m_VI_end_field_event.reset();
+}
+
+void MemoryWidget::AutoUpdateTable()
+{
+  if (!isVisible() || !m_auto_update_enabled)
+    return;
+
+  m_memory_view->UpdateOnFrameEnd();
+}
+
+void MemoryWidget::DisasmUpdate()
+{
+  if (Core::GetState() != Core::State::Paused)
+    return;
+
+  auto& system = Core::System::GetInstance();
+  auto& power_pc = system.GetPowerPC();
+  auto& ppc_state = system.GetPPCState();
+  Core::CPUThreadGuard guard(system);
+
+  const u32 address = ppc_state.pc;
+  const std::string inst_str = power_pc.GetDebugInterface().Disassemble(&guard, address);
+
+  if (!IsInstructionLoadStore(inst_str))
+  {
+    m_target_address->setCurrentIndex(-1);
+    return;
+  }
+
+  std::optional<u32> target_memory =
+      power_pc.GetDebugInterface().GetMemoryAddressFromInstruction(inst_str);
+
+  if (!target_memory.has_value())
+  {
+    m_target_address->setCurrentText(QStringLiteral("-"));
+    return;
+  }
+
+  const QString addr_str = QString::number(target_memory.value(), 16);
+  const int index = m_target_address->findText(addr_str);
+  if (index != -1)
+    m_target_address->removeItem(index);
+
+  m_target_address->insertItem(0, addr_str, target_memory.value());
+  m_target_address->setCurrentIndex(0);
 }
 
 void MemoryWidget::Update()
@@ -352,7 +482,7 @@ void MemoryWidget::Update()
   if (!isVisible())
     return;
 
-  m_memory_view->Update();
+  m_memory_view->UpdateDisbatcher(MemoryViewWidget::UpdateType::Addresses);
   update();
 }
 
@@ -375,9 +505,15 @@ void MemoryWidget::LoadSettings()
   m_address_space_auxiliary->setChecked(address_space_auxiliary);
   m_address_space_physical->setChecked(address_space_physical);
 
-  const int display_index = settings.value(QStringLiteral("memorywidget/display_type"), 1).toInt();
+  const int display_index = settings.value(QStringLiteral("memorywidget/display_type"), 2).toInt();
+  const int length_index = settings.value(QStringLiteral("memorywidget/row_length"), 0).toUInt();
+  const int align_index = settings.value(QStringLiteral("memorywidget/alignment"), 2).toUInt();
+  const bool dual_view_index = settings.value(QStringLiteral("memorywidget/dual_view"), 0).toBool();
 
   m_display_combo->setCurrentIndex(display_index);
+  m_row_length_combo->setCurrentIndex(length_index);
+  m_align_combo->setCurrentIndex(align_index);
+  m_dual_check->setChecked(dual_view_index);
 
   bool bp_rw = settings.value(QStringLiteral("memorywidget/bpreadwrite"), true).toBool();
   bool bp_r = settings.value(QStringLiteral("memorywidget/bpread"), false).toBool();
@@ -411,6 +547,9 @@ void MemoryWidget::SaveSettings()
                     m_address_space_physical->isChecked());
 
   settings.setValue(QStringLiteral("memorywidget/display_type"), m_display_combo->currentIndex());
+  settings.setValue(QStringLiteral("memorywidget/row_length"), m_row_length_combo->currentIndex());
+  settings.setValue(QStringLiteral("memorywidget/alignment"), m_align_combo->currentIndex());
+  settings.setValue(QStringLiteral("memorywidget/dual_view"), m_dual_check->isChecked());
 
   settings.setValue(QStringLiteral("memorywidget/bpreadwrite"), m_bp_read_write->isChecked());
   settings.setValue(QStringLiteral("memorywidget/bpread"), m_bp_read_only->isChecked());
@@ -721,6 +860,55 @@ void MemoryWidget::OnSetValueFromFile()
     accessors->WriteU8(guard, target_addr.address++, b);
 
   Update();
+}
+
+void MemoryWidget::OnSearchNotes()
+{
+  m_note_filter = m_search_notes->text();
+  UpdateNotes();
+}
+
+void MemoryWidget::OnSelectNote()
+{
+  const auto items = m_note_list->selectedItems();
+  if (items.isEmpty())
+    return;
+
+  const u32 address = items[0]->data(Qt::UserRole).toUInt();
+
+  SetAddress(address);
+}
+
+void MemoryWidget::UpdateNotes()
+{
+  if (g_symbolDB.Notes().empty())
+  {
+    m_note_group->hide();
+    return;
+  }
+
+  m_note_group->show();
+
+  QString selection = m_note_list->selectedItems().isEmpty() ?
+                          QStringLiteral("") :
+                          m_note_list->selectedItems()[0]->text();
+  m_note_list->clear();
+
+  for (const auto& note : g_symbolDB.Notes())
+  {
+    QString name = QString::fromStdString(note.second.name);
+
+    auto* item = new QListWidgetItem(name);
+    if (name == selection)
+      item->setSelected(true);
+
+    item->setData(Qt::UserRole, note.second.address);
+
+    if (name.toUpper().indexOf(m_note_filter.toUpper()) != -1)
+      m_note_list->addItem(item);
+  }
+
+  m_note_list->sortItems();
 }
 
 static void DumpArray(const std::string& filename, const u8* data, size_t length)
