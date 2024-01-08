@@ -406,7 +406,6 @@ void PowerPCManager::SingleStep()
 void PowerPCManager::RunLoop()
 {
   m_cpu_core_base->Run();
-  Host_UpdateDisasmDialog();
 }
 
 u64 PowerPCManager::ReadFullTimeBaseValue() const
