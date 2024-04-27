@@ -90,13 +90,11 @@ union AXBuffers
 // Determines if this version of the UCode has a PBLowPassFilter in its AXPB layout.
 bool HasLpf(u32 crc)
 {
-  switch (crc)
-  {
-  case 0x4E8A8B21:
-    return false;
-  default:
-    return true;
-  }
+#ifdef AX_GC
+  return crc != 0x4E8A8B21;
+#else
+  return true;
+#endif
 }
 
 // Read a PB from MRAM/ARAM
