@@ -11,6 +11,10 @@
 #error AXVoice.h included without specifying version
 #endif
 
+#ifdef __AVX2__
+#include <x86intrin.h>
+#endif
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -97,13 +101,31 @@ bool HasLpf(u32 crc)
 #endif
 }
 
+#ifdef __AVX2__
+void CopyPBSwapped(void* dst, const void* src)
+{
+  static_assert((sizeof(PB_TYPE) & 31) == 0, "PB size must be a multiple of 32");
+  const __m256i swap = _mm256_set_epi64x(0x0e0f0c0d0a0b0809, 0x0607040502030001, 0x0e0f0c0d0a0b0809,
+                                         0x0607040502030001);
+  for (size_t i = 0; i < sizeof(PB_TYPE) / 32; ++i)
+  {
+    _mm256_storeu_si256((__m256i*)dst + i,
+                        _mm256_shuffle_epi8(_mm256_loadu_si256((__m256i*)src + i), swap));
+  }
+}
+#endif
+
 // Read a PB from MRAM/ARAM
 void ReadPB(Memory::MemoryManager& memory, u32 addr, PB_TYPE& pb, u32 crc)
 {
   if (HasLpf(crc))
   {
+#ifdef __AVX2__
+    CopyPBSwapped(&pb, memory.GetPointerForRange(addr, sizeof(pb)));
+#else
     u16* dst = (u16*)&pb;
     memory.CopyFromEmuSwapped<u16>(dst, addr, sizeof(pb));
+#endif
   }
   else
   {
@@ -126,8 +148,12 @@ void WritePB(Memory::MemoryManager& memory, u32 addr, const PB_TYPE& pb, u32 crc
 {
   if (HasLpf(crc))
   {
+#ifdef __AVX2__
+    CopyPBSwapped(memory.GetPointerForRange(addr, sizeof(pb)), &pb);
+#else
     const u16* src = (const u16*)&pb;
     memory.CopyToEmuSwapped<u16>(addr, src, sizeof(pb));
+#endif
   }
   else
   {

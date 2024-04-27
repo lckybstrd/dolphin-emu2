@@ -183,7 +183,7 @@ struct PBLowPassFilter
   u16 b0;
 };
 
-struct AXPB
+struct alignas(32) AXPB
 {
   u16 next_pb_hi;
   u16 next_pb_lo;
@@ -234,7 +234,7 @@ union PBInfImpulseResponseWM
   PBBiquadFilter biquad;
 };
 
-struct AXPBWii
+struct alignas(32) AXPBWii
 {
   u16 next_pb_hi;
   u16 next_pb_lo;
