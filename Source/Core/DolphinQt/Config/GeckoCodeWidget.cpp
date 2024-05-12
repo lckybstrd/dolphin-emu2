@@ -200,7 +200,6 @@ void GeckoCodeWidget::OnItemChanged(QListWidgetItem* item)
   const int index = item->data(Qt::UserRole).toInt();
   m_gecko_codes[index].enabled = (item->checkState() == Qt::Checked);
 
-
   Gecko::SetActiveCodes(m_gecko_codes);
 
   SaveCodes();
