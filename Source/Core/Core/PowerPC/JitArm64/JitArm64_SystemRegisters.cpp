@@ -54,7 +54,7 @@ void JitArm64::GetCRFieldBit(int field, int bit, ARM64Reg out, bool negate)
   }
 }
 
-void JitArm64::SetCRFieldBit(int field, int bit, ARM64Reg in)
+void JitArm64::SetCRFieldBit(int field, int bit, ARM64Reg in, bool negate)
 {
   gpr.BindCRToRegister(field, true);
   ARM64Reg CR = gpr.CR(field);
@@ -66,21 +66,27 @@ void JitArm64::SetCRFieldBit(int field, int bit, ARM64Reg in)
   {
   case PowerPC::CR_SO_BIT:  // set bit 59 to input
     BFI(CR, in, PowerPC::CR_EMU_SO_BIT, 1);
+    if (negate)
+      EOR(CR, CR, LogicalImm(1ULL << PowerPC::CR_EMU_SO_BIT, GPRSize::B64));
     break;
 
   case PowerPC::CR_EQ_BIT:  // clear low 32 bits, set bit 0 to !input
     AND(CR, CR, LogicalImm(0xFFFF'FFFF'0000'0000, GPRSize::B64));
-    EOR(in, in, LogicalImm(1, GPRSize::B64));
     ORR(CR, CR, in);
+    if (!negate)
+      EOR(CR, CR, LogicalImm(1ULL << 0, GPRSize::B64));
     break;
 
   case PowerPC::CR_GT_BIT:  // set bit 63 to !input
-    EOR(in, in, LogicalImm(1, GPRSize::B64));
     BFI(CR, in, 63, 1);
+    if (!negate)
+      EOR(CR, CR, LogicalImm(1ULL << 63, GPRSize::B64));
     break;
 
   case PowerPC::CR_LT_BIT:  // set bit 62 to input
     BFI(CR, in, PowerPC::CR_EMU_LT_BIT, 1);
+    if (negate)
+      EOR(CR, CR, LogicalImm(1ULL << PowerPC::CR_EMU_LT_BIT, GPRSize::B64));
     break;
   }
 
@@ -633,7 +639,7 @@ void JitArm64::crXXX(UGeckoInstruction inst)
       ARM64Reg WA = gpr.GetReg();
       ARM64Reg XA = EncodeRegTo64(WA);
       GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, false);
-      SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA);
+      SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA, false);
       gpr.Unlock(WA);
       return;
     }
@@ -642,8 +648,8 @@ void JitArm64::crXXX(UGeckoInstruction inst)
     {
       ARM64Reg WA = gpr.GetReg();
       ARM64Reg XA = EncodeRegTo64(WA);
-      GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, true);
-      SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA);
+      GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, false);
+      SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA, true);
       gpr.Unlock(WA);
       return;
     }
@@ -655,30 +661,29 @@ void JitArm64::crXXX(UGeckoInstruction inst)
   ARM64Reg WB = gpr.GetReg();
   ARM64Reg XB = EncodeRegTo64(WB);
 
-  // creqv or crnand or crnor
-  bool negateA = inst.SUBOP10 == 289 || inst.SUBOP10 == 225 || inst.SUBOP10 == 33;
-  // crandc or crorc or crnand or crnor
-  bool negateB =
-      inst.SUBOP10 == 129 || inst.SUBOP10 == 417 || inst.SUBOP10 == 225 || inst.SUBOP10 == 33;
+  // crandc or crorc
+  const bool negate_b = inst.SUBOP10 == 129 || inst.SUBOP10 == 417;
+  // crnor or crnand or creqv
+  const bool negate_result = inst.SUBOP10 == 33 || inst.SUBOP10 == 225 || inst.SUBOP10 == 289;
 
-  GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, negateA);
-  GetCRFieldBit(inst.CRBB >> 2, 3 - (inst.CRBB & 3), XB, negateB);
+  GetCRFieldBit(inst.CRBA >> 2, 3 - (inst.CRBA & 3), XA, false);
+  GetCRFieldBit(inst.CRBB >> 2, 3 - (inst.CRBB & 3), XB, negate_b);
 
   // Compute combined bit
   switch (inst.SUBOP10)
   {
-  case 33:   // crnor: ~(A || B) == (~A && ~B)
   case 129:  // crandc: A && ~B
+  case 225:  // crnand: ~(A && B)
   case 257:  // crand:  A && B
     AND(XA, XA, XB);
     break;
 
   case 193:  // crxor: A ^ B
-  case 289:  // creqv: ~(A ^ B) = ~A ^ B
+  case 289:  // creqv: ~(A ^ B)
     EOR(XA, XA, XB);
     break;
 
-  case 225:  // crnand: ~(A && B) == (~A || ~B)
+  case 33:   // crnor: ~(A || B)
   case 417:  // crorc: A || ~B
   case 449:  // cror:  A || B
     ORR(XA, XA, XB);
@@ -688,7 +693,7 @@ void JitArm64::crXXX(UGeckoInstruction inst)
   gpr.Unlock(WB);
 
   // Store result bit in CRBD
-  SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA);
+  SetCRFieldBit(inst.CRBD >> 2, 3 - (inst.CRBD & 3), XA, negate_result);
 
   gpr.Unlock(WA);
 }
