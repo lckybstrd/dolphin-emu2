@@ -55,6 +55,16 @@ void JitArm64::FixGTBeforeSettingCRFieldBit(Arm64Gen::ARM64Reg reg)
   gpr.Unlock(WA);
 }
 
+void JitArm64::FixGTBeforeSettingEQ(Arm64Gen::ARM64Reg reg)
+{
+  ARM64Reg WA = gpr.GetReg();
+  ARM64Reg XA = EncodeRegTo64(WA);
+  ORR(XA, reg, LogicalImm(1ULL << 32, GPRSize::B64));
+  CMP(EncodeRegTo32(reg), ARM64Reg::WZR);
+  CSEL(reg, reg, XA, CC_EQ);
+  gpr.Unlock(WA);
+}
+
 void JitArm64::UpdateFPExceptionSummary(ARM64Reg fpscr)
 {
   ARM64Reg WA = gpr.GetReg();
@@ -526,18 +536,16 @@ void JitArm64::crXXX(UGeckoInstruction inst)
     gpr.BindCRToRegister(field, true);
     ARM64Reg XA = gpr.CR(field);
 
-    if (bit != PowerPC::CR_GT_BIT)
-      FixGTBeforeSettingCRFieldBit(XA);
-
     switch (bit)
     {
     case PowerPC::CR_SO_BIT:
+      FixGTBeforeSettingCRFieldBit(XA);
       ORR(XA, XA, LogicalImm(u64(1) << PowerPC::CR_EMU_SO_BIT, GPRSize::B64));
       break;
 
     case PowerPC::CR_EQ_BIT:
+      FixGTBeforeSettingEQ(XA);
       AND(XA, XA, LogicalImm(0xFFFF'FFFF'0000'0000, GPRSize::B64));
-      ORR(XA, XA, LogicalImm(u64(1) << 32, GPRSize::B64));
       break;
 
     case PowerPC::CR_GT_BIT:
@@ -546,6 +554,7 @@ void JitArm64::crXXX(UGeckoInstruction inst)
       break;
 
     case PowerPC::CR_LT_BIT:
+      FixGTBeforeSettingCRFieldBit(XA);
       ORR(XA, XA, LogicalImm(u64(1) << PowerPC::CR_EMU_LT_BIT, GPRSize::B64));
       break;
     }
@@ -633,18 +642,16 @@ void JitArm64::crXXX(UGeckoInstruction inst)
   gpr.BindCRToRegister(field, true);
   XB = gpr.CR(field);
 
-  if (bit != PowerPC::CR_GT_BIT)
-    FixGTBeforeSettingCRFieldBit(XB);
-
   switch (bit)
   {
   case PowerPC::CR_SO_BIT:  // set bit 59 to input
+    FixGTBeforeSettingCRFieldBit(XB);
     BFI(XB, XA, PowerPC::CR_EMU_SO_BIT, 1);
     break;
 
   case PowerPC::CR_EQ_BIT:  // clear low 32 bits, set bit 0 to !input
+    FixGTBeforeSettingEQ(XB);
     AND(XB, XB, LogicalImm(0xFFFF'FFFF'0000'0000, GPRSize::B64));
-    ORR(XB, XB, LogicalImm(1ULL << 32, GPRSize::B64));
     EOR(XA, XA, LogicalImm(1, GPRSize::B64));
     ORR(XB, XB, XA);
     break;
@@ -656,6 +663,7 @@ void JitArm64::crXXX(UGeckoInstruction inst)
     break;
 
   case PowerPC::CR_LT_BIT:  // set bit 62 to input
+    FixGTBeforeSettingCRFieldBit(XB);
     BFI(XB, XA, PowerPC::CR_EMU_LT_BIT, 1);
     break;
   }
