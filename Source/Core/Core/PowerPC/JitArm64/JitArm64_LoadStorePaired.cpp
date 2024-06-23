@@ -173,114 +173,115 @@ void JitArm64::psq_stXX(UGeckoInstruction inst)
 
   const bool have_single = fpr.IsSingle(inst.RS);
 
-  ARM64Reg VS = fpr.R(inst.RS, have_single ? RegType::Single : RegType::Register);
-
-  if (js.assumeNoPairedQuantize)
   {
-    if (!have_single)
-    {
-      const ARM64Reg single_reg = fpr.GetReg();
+    Arm64FPRCache::ScopedARM64Reg VS =
+        fpr.R(inst.RS, have_single ? RegType::Single : RegType::Register);
 
-      if (w)
-        m_float_emit.FCVT(32, 64, EncodeRegToDouble(single_reg), EncodeRegToDouble(VS));
+    if (js.assumeNoPairedQuantize)
+    {
+      if (!have_single)
+      {
+        auto single_reg = fpr.GetScopedReg();
+
+        if (w)
+          m_float_emit.FCVT(32, 64, EncodeRegToDouble(single_reg), EncodeRegToDouble(VS));
+        else
+          m_float_emit.FCVTN(32, EncodeRegToDouble(single_reg), EncodeRegToDouble(VS));
+
+        VS = std::move(single_reg);
+      }
+    }
+    else
+    {
+      if (have_single)
+      {
+        m_float_emit.ORR(ARM64Reg::D0, VS, VS);
+      }
       else
-        m_float_emit.FCVTN(32, EncodeRegToDouble(single_reg), EncodeRegToDouble(VS));
+      {
+        if (w)
+          m_float_emit.FCVT(32, 64, ARM64Reg::D0, VS);
+        else
+          m_float_emit.FCVTN(32, ARM64Reg::D0, VS);
+      }
+    }
 
-      VS = single_reg;
-    }
-  }
-  else
-  {
-    if (have_single)
+    gpr.Lock(ARM64Reg::W1, ARM64Reg::W2, ARM64Reg::W30);
+    if (!js.assumeNoPairedQuantize || !jo.fastmem)
+      gpr.Lock(ARM64Reg::W0);
+    if (!js.assumeNoPairedQuantize && !jo.fastmem)
+      gpr.Lock(ARM64Reg::W3);
+
+    constexpr ARM64Reg type_reg = ARM64Reg::W0;
+    constexpr ARM64Reg scale_reg = ARM64Reg::W1;
+    constexpr ARM64Reg addr_reg = ARM64Reg::W2;
+
+    if (inst.RA || update)  // Always uses the register on update
     {
-      m_float_emit.ORR(ARM64Reg::D0, VS, VS);
-    }
-    else
-    {
-      if (w)
-        m_float_emit.FCVT(32, 64, ARM64Reg::D0, VS);
+      if (indexed)
+        ADD(addr_reg, gpr.R(inst.RA), gpr.R(inst.RB));
       else
-        m_float_emit.FCVTN(32, ARM64Reg::D0, VS);
+        ADDI2R(addr_reg, gpr.R(inst.RA), offset, addr_reg);
+    }
+    else
+    {
+      if (indexed)
+        MOV(addr_reg, gpr.R(inst.RB));
+      else
+        MOVI2R(addr_reg, (u32)offset);
+    }
+
+    const bool early_update = !jo.memcheck;
+    if (update && early_update)
+    {
+      gpr.BindToRegister(inst.RA, false);
+      MOV(gpr.R(inst.RA), addr_reg);
+    }
+
+    if (js.assumeNoPairedQuantize)
+    {
+      BitSet32 gprs_in_use = gpr.GetCallerSavedUsed();
+      BitSet32 fprs_in_use = fpr.GetCallerSavedUsed();
+
+      // Wipe the registers we are using as temporaries
+      gprs_in_use[DecodeReg(ARM64Reg::W1)] = false;
+      if (!update || early_update)
+        gprs_in_use[DecodeReg(ARM64Reg::W2)] = false;
+      if (!jo.fastmem)
+        gprs_in_use[DecodeReg(ARM64Reg::W0)] = false;
+
+      u32 flags =
+          BackPatchInfo::FLAG_STORE | BackPatchInfo::FLAG_FLOAT | BackPatchInfo::FLAG_SIZE_32;
+      if (!w)
+        flags |= BackPatchInfo::FLAG_PAIR;
+
+      EmitBackpatchRoutine(flags, MemAccessMode::Auto, VS, EncodeRegTo64(addr_reg), gprs_in_use,
+                           fprs_in_use);
+    }
+    else
+    {
+      LDR(IndexType::Unsigned, scale_reg, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + i));
+
+      // Stash PC in case asm routine needs to call into C++
+      MOVI2R(ARM64Reg::W30, js.compilerPC);
+      STR(IndexType::Unsigned, ARM64Reg::W30, PPC_REG, PPCSTATE_OFF(pc));
+
+      UBFM(type_reg, scale_reg, 0, 2);    // Type
+      UBFM(scale_reg, scale_reg, 8, 13);  // Scale
+
+      MOVP2R(ARM64Reg::X30, w ? single_store_quantized : paired_store_quantized);
+      LDR(EncodeRegTo64(type_reg), ARM64Reg::X30, ArithOption(EncodeRegTo64(type_reg), true));
+      BLR(EncodeRegTo64(type_reg));
+
+      WriteConditionalExceptionExit(EXCEPTION_DSI, ARM64Reg::W30, ARM64Reg::Q1);
+    }
+
+    if (update && !early_update)
+    {
+      gpr.BindToRegister(inst.RA, false);
+      MOV(gpr.R(inst.RA), addr_reg);
     }
   }
-
-  gpr.Lock(ARM64Reg::W1, ARM64Reg::W2, ARM64Reg::W30);
-  if (!js.assumeNoPairedQuantize || !jo.fastmem)
-    gpr.Lock(ARM64Reg::W0);
-  if (!js.assumeNoPairedQuantize && !jo.fastmem)
-    gpr.Lock(ARM64Reg::W3);
-
-  constexpr ARM64Reg type_reg = ARM64Reg::W0;
-  constexpr ARM64Reg scale_reg = ARM64Reg::W1;
-  constexpr ARM64Reg addr_reg = ARM64Reg::W2;
-
-  if (inst.RA || update)  // Always uses the register on update
-  {
-    if (indexed)
-      ADD(addr_reg, gpr.R(inst.RA), gpr.R(inst.RB));
-    else
-      ADDI2R(addr_reg, gpr.R(inst.RA), offset, addr_reg);
-  }
-  else
-  {
-    if (indexed)
-      MOV(addr_reg, gpr.R(inst.RB));
-    else
-      MOVI2R(addr_reg, (u32)offset);
-  }
-
-  const bool early_update = !jo.memcheck;
-  if (update && early_update)
-  {
-    gpr.BindToRegister(inst.RA, false);
-    MOV(gpr.R(inst.RA), addr_reg);
-  }
-
-  if (js.assumeNoPairedQuantize)
-  {
-    BitSet32 gprs_in_use = gpr.GetCallerSavedUsed();
-    BitSet32 fprs_in_use = fpr.GetCallerSavedUsed();
-
-    // Wipe the registers we are using as temporaries
-    gprs_in_use[DecodeReg(ARM64Reg::W1)] = false;
-    if (!update || early_update)
-      gprs_in_use[DecodeReg(ARM64Reg::W2)] = false;
-    if (!jo.fastmem)
-      gprs_in_use[DecodeReg(ARM64Reg::W0)] = false;
-
-    u32 flags = BackPatchInfo::FLAG_STORE | BackPatchInfo::FLAG_FLOAT | BackPatchInfo::FLAG_SIZE_32;
-    if (!w)
-      flags |= BackPatchInfo::FLAG_PAIR;
-
-    EmitBackpatchRoutine(flags, MemAccessMode::Auto, VS, EncodeRegTo64(addr_reg), gprs_in_use,
-                         fprs_in_use);
-  }
-  else
-  {
-    LDR(IndexType::Unsigned, scale_reg, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + i));
-
-    // Stash PC in case asm routine needs to call into C++
-    MOVI2R(ARM64Reg::W30, js.compilerPC);
-    STR(IndexType::Unsigned, ARM64Reg::W30, PPC_REG, PPCSTATE_OFF(pc));
-
-    UBFM(type_reg, scale_reg, 0, 2);    // Type
-    UBFM(scale_reg, scale_reg, 8, 13);  // Scale
-
-    MOVP2R(ARM64Reg::X30, w ? single_store_quantized : paired_store_quantized);
-    LDR(EncodeRegTo64(type_reg), ARM64Reg::X30, ArithOption(EncodeRegTo64(type_reg), true));
-    BLR(EncodeRegTo64(type_reg));
-
-    WriteConditionalExceptionExit(EXCEPTION_DSI, ARM64Reg::W30, ARM64Reg::Q1);
-  }
-
-  if (update && !early_update)
-  {
-    gpr.BindToRegister(inst.RA, false);
-    MOV(gpr.R(inst.RA), addr_reg);
-  }
-
-  if (js.assumeNoPairedQuantize && !have_single)
-    fpr.Unlock(VS);
 
   gpr.Unlock(ARM64Reg::W1, ARM64Reg::W2, ARM64Reg::W30);
   fpr.Unlock(ARM64Reg::Q0);
