@@ -255,6 +255,12 @@ void MemoryWidget::CreateWidgets()
                          &MemoryWidget::OnSetValueFromFile);
   menubar->addMenu(menu_import);
 
+  auto* auto_update_action =
+      menu_views->addAction(tr("Auto update memory values"), this,
+                            [this](bool checked) { m_auto_update_enabled = checked; });
+  auto_update_action->setCheckable(true);
+  auto_update_action->setChecked(true);
+
   auto* highlight_update_action =
       menu_views->addAction(tr("Highlight recently changed values"), this,
                             [this](bool checked) { m_memory_view->ToggleHighlights(checked); });
@@ -376,7 +382,7 @@ void MemoryWidget::RemoveAfterFrameEventCallback()
 
 void MemoryWidget::AutoUpdateTable()
 {
-  if (!isVisible())
+  if (!isVisible() || !m_auto_update_enabled)
     return;
 
   m_memory_view->UpdateOnFrameEnd();
