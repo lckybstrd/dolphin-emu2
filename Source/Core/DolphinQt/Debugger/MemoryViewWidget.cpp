@@ -223,6 +223,9 @@ MemoryViewWidget::MemoryViewWidget(Core::System& system, QWidget* parent)
       UpdateDisbatcher(UpdateType::Values);
   });
 
+  // CPU Thread to Main Thread.
+  connect(this, &MemoryViewWidget::AutoUpdate, this,
+          [this] { UpdateDisbatcher(UpdateType::Auto); });
   connect(&Settings::Instance(), &Settings::ThemeChanged, this,
           [this] { UpdateDisbatcher(UpdateType::Full); });
 
@@ -304,8 +307,12 @@ constexpr int GetCharacterCount(MemoryViewWidget::Type type)
 
 void MemoryViewWidget::UpdateDisbatcher(UpdateType type)
 {
-  if (!isVisible())
+  if (!isVisible() || (m_updating.test() && type != UpdateType::Full))
     return;
+
+  // A full update may change parameters like row count, so make sure it goes through.
+  while (m_updating.test_and_set())
+    ;  // spin
 
   // Check if table needs to be created.
   if (m_table->item(2, 1) == nullptr)
@@ -324,9 +331,15 @@ void MemoryViewWidget::UpdateDisbatcher(UpdateType type)
       GetValues();
     UpdateColumns();
     break;
+  case UpdateType::Auto:
+    // Values were captured on CPU thread while doing a callback.
+    if (m_values.size() != 0)
+      UpdateColumns();
   default:
     break;
   }
+
+  m_updating.clear();
 }
 
 void MemoryViewWidget::CreateTable()
@@ -512,6 +525,18 @@ void MemoryViewWidget::UpdateColumns()
       else
         cell_item->setText(new_text.value());
     }
+  }
+}
+
+// Always runs on CPU thread from a callback.
+void MemoryViewWidget::UpdateOnFrameEnd()
+{
+  if (!m_updating.test_and_set())
+  {
+    GetValues();
+    // Should not directly trigger widget updates on a cpu thread. Signal main thread to do it.
+    emit AutoUpdate();
+    m_updating.clear();
   }
 }
 

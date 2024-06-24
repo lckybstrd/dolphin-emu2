@@ -83,6 +83,7 @@ public:
   void CreateTable();
   void UpdateDisbatcher(UpdateType type = UpdateType::Addresses);
   void Update();
+  void UpdateOnFrameEnd();
   void GetValues();
   void UpdateFont(const QFont& font);
   void ToggleBreakpoint(u32 addr, bool row);
@@ -98,6 +99,7 @@ public:
   void SetBPLoggingEnabled(bool enabled);
 
 signals:
+  void AutoUpdate();
   void BreakpointsChanged();
   void ShowCode(u32 address);
   void RequestWatch(QString name, u32 address);
@@ -131,6 +133,7 @@ private:
   int m_alignment = 16;
   int m_data_columns;
   bool m_dual_view = false;
+  std::atomic_flag m_updating = ATOMIC_FLAG_INIT;
   QColor m_highlight_color = QColor(120, 255, 255, 100);
 
   friend class MemoryViewTable;
