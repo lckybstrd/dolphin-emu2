@@ -46,7 +46,7 @@ installed when building.
 
 Make sure to pull submodules before building:
 ```sh
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 The "Release" solution configuration includes performance optimizations for the best user experience but complicates debugging Dolphin.
@@ -63,7 +63,7 @@ to install any missing packages yourself. You may refer to the [wiki](https://gi
 
 Make sure to pull submodules before building:
 ```sh
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 ### macOS Build Steps:
@@ -128,7 +128,7 @@ Android dev environment set up, see [AndroidSetup.md](AndroidSetup.md).
 
 Make sure to pull submodules before building:
 ```sh
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 If using Android Studio, import the Gradle project located in `./Source/Android`.
@@ -193,7 +193,7 @@ is intended for debugging purposes only.
 ```
 usage: dolphin-tool COMMAND -h
 
-commands supported: [convert, verify, header]
+commands supported: [convert, verify, header, extract]
 ```
 
 ```
@@ -251,4 +251,23 @@ then exit.
   -l, --compression_level
                         Optional. Print the level of compression for WIA/RVZ
                         formats, then exit.
+```
+
+```
+Usage: extract [options]...
+
+Options:
+  -h, --help            show this help message and exit
+  -i FILE, --input=FILE
+                        Path to disc image FILE.
+  -o FOLDER, --output=FOLDER
+                        Path to the destination FOLDER.
+  -p PARTITION, --partition=PARTITION
+                        Which specific partition you want to extract.
+  -s SINGLE, --single=SINGLE
+                        Which specific file/directory you want to extract.
+  -l, --list            List all files in volume/partition. Will print the
+                        directory/file specified with --single if defined.
+  -q, --quiet           Mute all messages except for errors.
+  -g, --gameonly        Only extracts the DATA partition.
 ```

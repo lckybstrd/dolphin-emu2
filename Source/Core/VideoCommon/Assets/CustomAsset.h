@@ -20,16 +20,17 @@ public:
   CustomAsset(std::shared_ptr<CustomAssetLibrary> library,
               const CustomAssetLibrary::AssetID& asset_id);
   virtual ~CustomAsset() = default;
-  CustomAsset(const CustomAsset&) = default;
-  CustomAsset(CustomAsset&&) = default;
-  CustomAsset& operator=(const CustomAsset&) = default;
-  CustomAsset& operator=(CustomAsset&&) = default;
+  CustomAsset(const CustomAsset&) = delete;
+  CustomAsset(CustomAsset&&) = delete;
+  CustomAsset& operator=(const CustomAsset&) = delete;
+  CustomAsset& operator=(CustomAsset&&) = delete;
 
   // Loads the asset from the library returning a pass/fail result
   bool Load();
 
   // Queries the last time the asset was modified or standard epoch time
   // if the asset hasn't been modified yet
+  // Note: not thread safe, expected to be called by the loader
   CustomAssetLibrary::TimeType GetLastWriteTime() const;
 
   // Returns the time that the data was last loaded
@@ -48,8 +49,10 @@ protected:
 private:
   virtual CustomAssetLibrary::LoadInfo LoadImpl(const CustomAssetLibrary::AssetID& asset_id) = 0;
   CustomAssetLibrary::AssetID m_asset_id;
+
+  mutable std::mutex m_info_lock;
   std::size_t m_bytes_loaded = 0;
-  CustomAssetLibrary::TimeType m_last_loaded_time;
+  CustomAssetLibrary::TimeType m_last_loaded_time = {};
 };
 
 // An abstract class that is expected to
@@ -70,7 +73,7 @@ public:
   // they want to handle reloads
   [[nodiscard]] std::shared_ptr<UnderlyingType> GetData() const
   {
-    std::lock_guard lk(m_lock);
+    std::lock_guard lk(m_data_lock);
     if (m_loaded)
       return m_data;
     return nullptr;
@@ -78,8 +81,22 @@ public:
 
 protected:
   bool m_loaded = false;
-  mutable std::mutex m_lock;
+  mutable std::mutex m_data_lock;
   std::shared_ptr<UnderlyingType> m_data;
+};
+
+// A helper struct that contains
+// an asset with a last cached write time
+// This can be used to determine if the asset
+// has diverged from the last known state
+// To know if it is time to update other dependencies
+// based on the asset data
+// TODO C++20: use a 'derived_from' concept against 'CustomAsset' when available
+template <typename AssetType>
+struct CachedAsset
+{
+  std::shared_ptr<AssetType> m_asset;
+  VideoCommon::CustomAssetLibrary::TimeType m_cached_write_time;
 };
 
 }  // namespace VideoCommon

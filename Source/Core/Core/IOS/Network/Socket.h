@@ -52,6 +52,7 @@ typedef struct pollfd pollfd_t;
 #include <utility>
 
 #include "Common/CommonTypes.h"
+#include "Common/EnumUtils.h"
 #include "Common/Logging/Log.h"
 #include "Core/HW/Memmap.h"
 #include "Core/IOS/IOS.h"
@@ -181,10 +182,10 @@ class WiiSocket
 public:
   explicit WiiSocket(WiiSockMan& socket_manager) : m_socket_manager(socket_manager) {}
   WiiSocket(const WiiSocket&) = delete;
-  WiiSocket(WiiSocket&&) = default;
+  WiiSocket(WiiSocket&&) = delete;
   ~WiiSocket();
   WiiSocket& operator=(const WiiSocket&) = delete;
-  WiiSocket& operator=(WiiSocket&&) = default;
+  WiiSocket& operator=(WiiSocket&&) = delete;
 
 private:
   using Timeout = std::chrono::time_point<std::chrono::steady_clock>;
@@ -198,7 +199,6 @@ private:
       NET_IOCTL net_type;
       SSL_IOCTL ssl_type;
     };
-    void Abort(s32 value);
   };
 
   enum class ConnectingState
@@ -215,6 +215,7 @@ private:
   s32 Shutdown(u32 how);
   s32 CloseFd();
   s32 FCntl(u32 cmd, u32 arg);
+  void Abort(sockop* op, s32 value) const;
 
   const Timeout& GetTimeout();
   void ResetTimeout();
@@ -255,7 +256,7 @@ public:
     s64 timeout = 0;
   };
 
-  WiiSockMan();
+  explicit WiiSockMan(EmulationKernel& ios);
   WiiSockMan(const WiiSockMan&) = delete;
   WiiSockMan& operator=(const WiiSockMan&) = delete;
   WiiSockMan(WiiSockMan&&) = delete;
@@ -265,9 +266,9 @@ public:
   s32 GetNetErrorCode(s32 ret, std::string_view caller, bool is_rw);
 
   void Update();
-  static void ToNativeAddrIn(const u8* from, sockaddr_in* to);
-  static void ToWiiAddrIn(const sockaddr_in& from, u8* to,
-                          socklen_t addrlen = sizeof(WiiSockAddrIn));
+  static sockaddr_in ToNativeAddrIn(WiiSockAddrIn from);
+  static WiiSockAddrIn ToWiiAddrIn(const sockaddr_in& from,
+                                   socklen_t addrlen = sizeof(WiiSockAddrIn));
   static s32 ConvertEvents(s32 events, ConvertDirection dir);
 
   void DoState(PointerWrap& p);
@@ -282,6 +283,7 @@ public:
   s32 GetLastNetError() const { return errno_last; }
   void SetLastNetError(s32 error) { errno_last = error; }
   void Clean() { WiiSockets.clear(); }
+  void EnqueueIPCReply(const Request& request, s32 return_value) const;
   template <typename T>
   void DoSock(s32 sock, const Request& request, T type)
   {
@@ -289,8 +291,8 @@ public:
     if (socket_entry == WiiSockets.end())
     {
       ERROR_LOG_FMT(IOS_NET, "DoSock: Error, fd not found ({:08x}, {:08X}, {:08X})", sock,
-                    request.address, static_cast<u32>(type));
-      GetIOS()->EnqueueIPCReply(request, -SO_EBADF);
+                    request.address, Common::ToUnderlying(type));
+      EnqueueIPCReply(request, -SO_EBADF);
     }
     else
     {
@@ -303,6 +305,9 @@ public:
 private:
   void UpdatePollCommands();
 
+  friend class WiiSocket;
+
+  EmulationKernel& m_ios;
   std::unordered_map<s32, WiiSocket> WiiSockets;
   s32 errno_last = 0;
   std::vector<PollCommand> pending_polls;

@@ -152,9 +152,10 @@ void Jit64::SetCRFieldBit(int field, int bit)
 
 void Jit64::FixGTBeforeSettingCRFieldBit(Gen::X64Reg reg)
 {
-  // Gross but necessary; if the input is totally zero and we set SO or LT,
-  // or even just add the (1<<32), GT will suddenly end up set without us
-  // intending to. This can break actual games, so fix it up.
+  // GT is considered unset if the internal representation is <= 0, or in other words,
+  // if the internal representation either has bit 63 set or has all bits set to zero.
+  // If all bits are zero and we set some bit that's unrelated to GT, we need to set bit 63 so GT
+  // doesn't accidentally become considered set. Gross but necessary; this can break actual games.
   TEST(64, R(reg), R(reg));
   FixupBranch dont_clear_gt = J_CC(CC_NZ);
   BTS(64, R(reg), Imm8(63));
@@ -167,19 +168,19 @@ FixupBranch Jit64::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
   {
   case PowerPC::CR_SO_BIT:  // check bit 59 set
     BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_SO_BIT));
-    return J_CC(jump_if_set ? CC_C : CC_NC, true);
+    return J_CC(jump_if_set ? CC_C : CC_NC, Jump::Near);
 
   case PowerPC::CR_EQ_BIT:  // check bits 31-0 == 0
     CMP(32, CROffset(field), Imm8(0));
-    return J_CC(jump_if_set ? CC_Z : CC_NZ, true);
+    return J_CC(jump_if_set ? CC_Z : CC_NZ, Jump::Near);
 
   case PowerPC::CR_GT_BIT:  // check val > 0
     CMP(64, CROffset(field), Imm8(0));
-    return J_CC(jump_if_set ? CC_G : CC_LE, true);
+    return J_CC(jump_if_set ? CC_G : CC_LE, Jump::Near);
 
   case PowerPC::CR_LT_BIT:  // check bit 62 set
     BT(64, CROffset(field), Imm8(PowerPC::CR_EMU_LT_BIT));
-    return J_CC(jump_if_set ? CC_C : CC_NC, true);
+    return J_CC(jump_if_set ? CC_C : CC_NC, Jump::Near);
 
   default:
     ASSERT_MSG(DYNA_REC, false, "Invalid CR bit");
@@ -216,9 +217,9 @@ void Jit64::UpdateFPExceptionSummary(X64Reg fpscr, X64Reg tmp1, X64Reg tmp2)
   OR(32, R(fpscr), R(tmp1));
 }
 
-static void DoICacheReset(PowerPC::PowerPCState& ppc_state)
+static void DoICacheReset(PowerPC::PowerPCState& ppc_state, JitInterface& jit_interface)
 {
-  ppc_state.iCache.Reset();
+  ppc_state.iCache.Reset(jit_interface);
 }
 
 void Jit64::mtspr(UGeckoInstruction inst)
@@ -286,7 +287,7 @@ void Jit64::mtspr(UGeckoInstruction inst)
     FixupBranch dont_reset_icache = J_CC(CC_NC);
     BitSet32 regs = CallerSavedRegistersInUse();
     ABI_PushRegistersAndAdjustStack(regs, 0);
-    ABI_CallFunctionP(DoICacheReset, &m_ppc_state);
+    ABI_CallFunctionPP(DoICacheReset, &m_ppc_state, &m_system.GetJitInterface());
     ABI_PopRegistersAndAdjustStack(regs, 0);
     SetJumpTarget(dont_reset_icache);
     return;
@@ -438,28 +439,27 @@ void Jit64::mtmsr(UGeckoInstruction inst)
     RCOpArg Rs = gpr.BindOrImm(inst.RS, RCMode::Read);
     RegCache::Realize(Rs);
     MOV(32, PPCSTATE(msr), Rs);
+
+    MSRUpdated(Rs, RSCRATCH2);
   }
+
   gpr.Flush();
   fpr.Flush();
-
-  // Our jit cache also stores some MSR bits, as they have changed, we either
-  // have to validate them in the BLR/RET check, or just flush the stack here.
-  asm_routines.ResetStack(*this);
 
   // If some exceptions are pending and EE are now enabled, force checking
   // external exceptions when going out of mtmsr in order to execute delayed
   // interrupts as soon as possible.
   TEST(32, PPCSTATE(msr), Imm32(0x8000));
-  FixupBranch eeDisabled = J_CC(CC_Z, true);
+  FixupBranch eeDisabled = J_CC(CC_Z, Jump::Near);
 
   TEST(32, PPCSTATE(Exceptions),
        Imm32(EXCEPTION_EXTERNAL_INT | EXCEPTION_PERFORMANCE_MONITOR | EXCEPTION_DECREMENTER));
-  FixupBranch noExceptionsPending = J_CC(CC_Z, true);
+  FixupBranch noExceptionsPending = J_CC(CC_Z, Jump::Near);
 
   // Check if a CP interrupt is waiting and keep the GPU emulation in sync (issue 4336)
   MOV(64, R(RSCRATCH), ImmPtr(&m_system.GetProcessorInterface().m_interrupt_cause));
   TEST(32, MatR(RSCRATCH), Imm32(ProcessorInterface::INT_CAUSE_CP));
-  FixupBranch cpInt = J_CC(CC_NZ, true);
+  FixupBranch cpInt = J_CC(CC_NZ, Jump::Near);
 
   MOV(32, PPCSTATE(pc), Imm32(js.compilerPC + 4));
   WriteExternalExceptionExit();
@@ -585,8 +585,8 @@ void Jit64::mcrxr(UGeckoInstruction inst)
   MOV(64, CROffset(inst.CRFD), R(RSCRATCH));
 
   // Clear XER[0-3]
-  MOV(8, PPCSTATE(xer_ca), Imm8(0));
-  MOV(8, PPCSTATE(xer_so_ov), Imm8(0));
+  static_assert(PPCSTATE_OFF(xer_ca) + 1 == PPCSTATE_OFF(xer_so_ov));
+  MOV(16, PPCSTATE(xer_ca), Imm16(0));
 }
 
 void Jit64::crXXX(UGeckoInstruction inst)

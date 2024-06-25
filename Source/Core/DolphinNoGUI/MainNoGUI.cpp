@@ -24,6 +24,7 @@
 #include "Core/Core.h"
 #include "Core/DolphinAnalytics.h"
 #include "Core/Host.h"
+#include "Core/System.h"
 
 #include "UICommon/CommandLineParse.h"
 #ifdef USE_DISCORD_PRESENCE
@@ -56,7 +57,7 @@ std::vector<std::string> Host_GetPreferredLocales()
   return {};
 }
 
-void Host_NotifyMapLoaded()
+void Host_PPCSymbolsChanged()
 {
 }
 
@@ -108,6 +109,11 @@ bool Host_RendererHasFullFocus()
 bool Host_RendererIsFullscreen()
 {
   return s_platform->IsWindowFullscreen();
+}
+
+bool Host_TASInputHasFocus()
+{
+  return false;
 }
 
 void Host_YieldToUI()
@@ -185,6 +191,8 @@ static std::unique_ptr<Platform> GetPlatform(const optparse::Values& options)
 
 int main(int argc, char* argv[])
 {
+  Core::DeclareAsHostThread();
+
   auto parser = CommandLineParse::CreateParser(CommandLineParse::ParserOptions::OmitGUIOptions);
   parser->add_option("-p", "--platform")
       .action("store")
@@ -302,7 +310,7 @@ int main(int argc, char* argv[])
 
   DolphinAnalytics::Instance().ReportDolphinStart("nogui");
 
-  if (!BootManager::BootCore(std::move(boot), wsi))
+  if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot), wsi))
   {
     fprintf(stderr, "Could not boot the specified file\n");
     return 1;
@@ -313,9 +321,9 @@ int main(int argc, char* argv[])
 #endif
 
   s_platform->MainLoop();
-  Core::Stop();
+  Core::Stop(Core::System::GetInstance());
 
-  Core::Shutdown();
+  Core::Shutdown(Core::System::GetInstance());
   s_platform.reset();
 
   return 0;

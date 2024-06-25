@@ -7,6 +7,7 @@
 
 #include "Common/CPUDetect.h"
 #include "Common/CommonTypes.h"
+#include "Common/EnumUtils.h"
 #include "Common/FloatUtils.h"
 #include "Common/Intrinsics.h"
 #include "Common/JitRegister.h"
@@ -128,7 +129,7 @@ void CommonAsmRoutines::GenFrsqrte()
   // Negatives, zeros, denormals, infinities and NaNs take the complex path.
   LEA(32, RSCRATCH2, MDisp(RSCRATCH_EXTRA, -1));
   CMP(32, R(RSCRATCH2), Imm32(0x7FE));
-  FixupBranch complex = J_CC(CC_AE, true);
+  FixupBranch complex = J_CC(CC_AE, Jump::Near);
 
   SUB(32, R(RSCRATCH_EXTRA), Imm32(0x3FD));
   SAR(32, R(RSCRATCH_EXTRA), Imm8(1));
@@ -140,7 +141,6 @@ void CommonAsmRoutines::GenFrsqrte()
   MOV(64, R(RSCRATCH_EXTRA), R(RSCRATCH));
   SHR(64, R(RSCRATCH_EXTRA), Imm8(48));
   AND(32, R(RSCRATCH_EXTRA), Imm8(0x1F));
-  XOR(32, R(RSCRATCH_EXTRA), Imm8(0x10));  // int index = i / 2048 + (odd_exponent ? 16 : 0);
 
   PUSH(RSCRATCH2);
   MOV(64, R(RSCRATCH2), ImmPtr(GetConstantFromPool(Common::frsqrte_expected)));
@@ -150,14 +150,13 @@ void CommonAsmRoutines::GenFrsqrte()
   AND(32, R(RSCRATCH), Imm32(0x7FF));
   IMUL(32, RSCRATCH,
        MComplex(RSCRATCH2, RSCRATCH_EXTRA, SCALE_8, offsetof(Common::BaseAndDec, m_dec)));
-  MOV(32, R(RSCRATCH_EXTRA),
+  ADD(32, R(RSCRATCH),
       MComplex(RSCRATCH2, RSCRATCH_EXTRA, SCALE_8, offsetof(Common::BaseAndDec, m_base)));
-  SUB(32, R(RSCRATCH_EXTRA), R(RSCRATCH));
-  SHL(64, R(RSCRATCH_EXTRA), Imm8(26));
+  SHL(64, R(RSCRATCH), Imm8(26));
 
   POP(RSCRATCH2);
-  OR(64, R(RSCRATCH2), R(RSCRATCH_EXTRA));  // vali |= (s64)(frsqrte_expected_base[index] -
-                                            // frsqrte_expected_dec[index] * (i % 2048)) << 26;
+  OR(64, R(RSCRATCH2), R(RSCRATCH));  // vali |= (s64)(frsqrte_expected_base[index] +
+                                      // frsqrte_expected_dec[index] * (i % 2048)) << 26;
   MOVQ_xmm(XMM0, R(RSCRATCH2));
   RET();
 
@@ -370,7 +369,7 @@ const u8* CommonAsmRoutines::GenQuantizedStoreRuntime(bool single, EQuantizeType
   GenQuantizedStore(single, type, -1);
   RET();
   Common::JitRegister::Register(start, GetCodePtr(), "JIT_QuantizedStore_{}_{}",
-                                static_cast<u32>(type), single);
+                                Common::ToUnderlying(type), single);
 
   return load;
 }
@@ -402,7 +401,7 @@ const u8* CommonAsmRoutines::GenQuantizedLoadRuntime(bool single, EQuantizeType 
   GenQuantizedLoad(single, type, -1);
   RET();
   Common::JitRegister::Register(start, GetCodePtr(), "JIT_QuantizedLoad_{}_{}",
-                                static_cast<u32>(type), single);
+                                Common::ToUnderlying(type), single);
 
   return load;
 }

@@ -509,7 +509,7 @@ HLE::ReturnCode TicketReader::Unpersonalise(HLE::IOSC& iosc)
   using namespace HLE;
   IOSC::Handle public_handle;
   ReturnCode ret =
-      iosc.CreateObject(&public_handle, IOSC::TYPE_PUBLIC_KEY, IOSC::SUBTYPE_ECC233, PID_ES);
+      iosc.CreateObject(&public_handle, IOSC::TYPE_PUBLIC_KEY, IOSC::ObjectSubType::ECC233, PID_ES);
   if (ret != IPC_SUCCESS)
     return ret;
 
@@ -519,7 +519,7 @@ HLE::ReturnCode TicketReader::Unpersonalise(HLE::IOSC& iosc)
     return ret;
 
   IOSC::Handle key_handle;
-  ret = iosc.CreateObject(&key_handle, IOSC::TYPE_SECRET_KEY, IOSC::SUBTYPE_AES128, PID_ES);
+  ret = iosc.CreateObject(&key_handle, IOSC::TYPE_SECRET_KEY, IOSC::ObjectSubType::AES128, PID_ES);
   if (ret != IPC_SUCCESS)
     return ret;
 
@@ -554,7 +554,7 @@ struct SharedContentMap::Entry
 };
 
 constexpr char CONTENT_MAP_PATH[] = "/shared1/content.map";
-SharedContentMap::SharedContentMap(HLE::FSCore& fs_core) : m_fs_core{fs_core}, m_fs{fs_core.GetFS()}
+SharedContentMap::SharedContentMap(HLE::FSCore& fs_core) : m_fs{fs_core.GetFS()}
 {
   static_assert(sizeof(Entry) == 28, "SharedContentMap::Entry has the wrong size");
 
@@ -614,9 +614,7 @@ std::string SharedContentMap::AddSharedContent(const std::array<u8, 20>& sha1)
 
 bool SharedContentMap::DeleteSharedContent(const std::array<u8, 20>& sha1)
 {
-  m_entries.erase(std::remove_if(m_entries.begin(), m_entries.end(),
-                                 [&sha1](const auto& entry) { return entry.sha1 == sha1; }),
-                  m_entries.end());
+  std::erase_if(m_entries, [&sha1](const auto& entry) { return entry.sha1 == sha1; });
   return WriteEntries();
 }
 
@@ -650,7 +648,7 @@ static std::pair<u32, u64> ReadUidSysEntry(HLE::FSCore& fs, u64 fd, u64* ticks)
 }
 
 constexpr char UID_MAP_PATH[] = "/sys/uid.sys";
-UIDSys::UIDSys(HLE::FSCore& fs_core) : m_fs_core{fs_core}, m_fs{fs_core.GetFS()}
+UIDSys::UIDSys(HLE::FSCore& fs_core) : m_fs{fs_core.GetFS()}
 {
   if (const auto fd =
           fs_core.Open(PID_KERNEL, PID_KERNEL, UID_MAP_PATH, HLE::FS::Mode::Read, {}, &m_ticks);
@@ -720,9 +718,6 @@ CertReader::CertReader(std::vector<u8>&& bytes) : SignedBlobReader(std::move(byt
   if (!IsSignatureValid())
     return;
 
-  // XXX: in old GCC versions, capturing 'this' does not work for some lambdas. The workaround
-  // is to not use auto for the parameter (even though the type is obvious).
-  // This can be dropped once we require GCC 7.
   using CertStructInfo = std::tuple<SignatureType, PublicKeyType, size_t>;
   static constexpr std::array<CertStructInfo, 4> types{{
       {SignatureType::RSA4096, PublicKeyType::RSA2048, sizeof(CertRSA4096RSA2048)},

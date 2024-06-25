@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include "Common/ChunkFile.h"
+#include "Common/EnumUtils.h"
 #include "Common/StringUtil.h"
 #include "Common/Swap.h"
 #include "Core/HW/Memmap.h"
@@ -119,7 +120,7 @@ static void LogResult(ResultCode code, fmt::format_string<Args...> format, Args&
       code == ResultCode::Success ? Common::Log::LogLevel::LINFO : Common::Log::LogLevel::LERROR;
 
   GENERIC_LOG_FMT(Common::Log::LogType::IOS_FS, type, "Command: {}: Result {}", command,
-                  static_cast<s32>(ConvertResult(code)));
+                  Common::ToUnderlying(ConvertResult(code)));
 }
 
 template <typename T, typename... Args>
@@ -325,8 +326,8 @@ std::optional<IPCReply> FSDevice::Read(const ReadWriteRequest& request)
   return MakeIPCReply([&](Ticks t) {
     auto& system = GetSystem();
     auto& memory = system.GetMemory();
-    return m_core.Read(request.fd, memory.GetPointer(request.buffer), request.size, request.buffer,
-                       t);
+    return m_core.Read(request.fd, memory.GetPointerForRange(request.buffer, request.size),
+                       request.size, request.buffer, t);
   });
 }
 
@@ -356,8 +357,8 @@ std::optional<IPCReply> FSDevice::Write(const ReadWriteRequest& request)
   return MakeIPCReply([&](Ticks t) {
     auto& system = GetSystem();
     auto& memory = system.GetMemory();
-    return m_core.Write(request.fd, memory.GetPointer(request.buffer), request.size, request.buffer,
-                        t);
+    return m_core.Write(request.fd, memory.GetPointerForRange(request.buffer, request.size),
+                        request.size, request.buffer, t);
   });
 }
 

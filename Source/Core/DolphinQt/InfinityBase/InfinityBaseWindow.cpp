@@ -3,6 +3,8 @@
 
 #include "DolphinQt/InfinityBase/InfinityBaseWindow.h"
 
+#include <string>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCompleter>
@@ -19,9 +21,12 @@
 #include "Common/IOFile.h"
 
 #include "Core/Config/MainSettings.h"
+#include "Core/Core.h"
+#include "Core/IOS/USB/Emulated/Infinity.h"
 #include "Core/System.h"
 
 #include "DolphinQt/QtUtils/DolphinFileDialog.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Settings.h"
 
 // Qt is not guaranteed to keep track of file paths using native file pickers, so we use this
@@ -30,6 +35,7 @@ static QString s_last_figure_path;
 
 InfinityBaseWindow::InfinityBaseWindow(QWidget* parent) : QWidget(parent)
 {
+  // i18n: Window for managing Disney Infinity figures
   setWindowTitle(tr("Infinity Manager"));
   setObjectName(QStringLiteral("infinity_manager"));
   setMinimumSize(QSize(700, 200));
@@ -41,7 +47,7 @@ InfinityBaseWindow::InfinityBaseWindow(QWidget* parent) : QWidget(parent)
 
   installEventFilter(this);
 
-  OnEmulationStateChanged(Core::GetState());
+  OnEmulationStateChanged(Core::GetState(Core::System::GetInstance()));
 };
 
 InfinityBaseWindow::~InfinityBaseWindow() = default;
@@ -55,7 +61,7 @@ void InfinityBaseWindow::CreateMainWindow()
   checkbox_layout->setAlignment(Qt::AlignHCenter);
   m_checkbox = new QCheckBox(tr("Emulate Infinity Base"), this);
   m_checkbox->setChecked(Config::Get(Config::MAIN_EMULATE_INFINITY_BASE));
-  connect(m_checkbox, &QCheckBox::toggled, [=](bool checked) { EmulateBase(checked); });
+  connect(m_checkbox, &QCheckBox::toggled, this, &InfinityBaseWindow::EmulateBase);
   checkbox_layout->addWidget(m_checkbox);
   checkbox_group->setLayout(checkbox_layout);
   main_layout->addWidget(checkbox_group);
@@ -71,19 +77,23 @@ void InfinityBaseWindow::CreateMainWindow()
   auto* vbox_group = new QVBoxLayout();
   auto* scroll_area = new QScrollArea();
 
-  AddFigureSlot(vbox_group, QString(tr("Play Set/Power Disc")), 0);
+  AddFigureSlot(vbox_group, tr("Play Set/Power Disc"), 0);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player One")), 1);
+  AddFigureSlot(vbox_group, tr("Power Disc Two"), 1);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player One Ability One")), 3);
+  AddFigureSlot(vbox_group, tr("Power Disc Three"), 2);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player One Ability Two")), 5);
+  AddFigureSlot(vbox_group, tr("Player One"), 3);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player Two")), 2);
+  AddFigureSlot(vbox_group, tr("Player One Ability One"), 4);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player Two Ability One")), 4);
+  AddFigureSlot(vbox_group, tr("Player One Ability Two"), 5);
   add_line(vbox_group);
-  AddFigureSlot(vbox_group, QString(tr("Player Two Ability Two")), 6);
+  AddFigureSlot(vbox_group, tr("Player Two"), 6);
+  add_line(vbox_group);
+  AddFigureSlot(vbox_group, tr("Player Two Ability One"), 7);
+  add_line(vbox_group);
+  AddFigureSlot(vbox_group, tr("Player Two Ability Two"), 8);
 
   m_group_figures->setLayout(vbox_group);
   scroll_area->setWidget(m_group_figures);
@@ -145,6 +155,7 @@ void InfinityBaseWindow::LoadFigure(u8 slot)
 void InfinityBaseWindow::CreateFigure(u8 slot)
 {
   CreateFigureDialog create_dlg(this, slot);
+  SetQWidgetWindowDecorations(&create_dlg);
   if (create_dlg.exec() == CreateFigureDialog::Accepted)
   {
     LoadFigurePath(slot, create_dlg.GetFilePath());
@@ -158,7 +169,7 @@ void InfinityBaseWindow::LoadFigurePath(u8 slot, const QString& path)
   {
     QMessageBox::warning(
         this, tr("Failed to open the Infinity file!"),
-        tr("Failed to open the Infinity file(%1)!\nFile may already be in use on the base.")
+        tr("Failed to open the Infinity file:\n%1\n\nThe file may already be in use on the base.")
             .arg(path),
         QMessageBox::Ok);
     return;
@@ -166,9 +177,10 @@ void InfinityBaseWindow::LoadFigurePath(u8 slot, const QString& path)
   std::array<u8, IOS::HLE::USB::INFINITY_NUM_BLOCKS * IOS::HLE::USB::INFINITY_BLOCK_SIZE> file_data;
   if (!inf_file.ReadBytes(file_data.data(), file_data.size()))
   {
-    QMessageBox::warning(this, tr("Failed to read the Infinity file!"),
-                         tr("Failed to read the Infinity file(%1)!\nFile was too small.").arg(path),
-                         QMessageBox::Ok);
+    QMessageBox::warning(
+        this, tr("Failed to read the Infinity file!"),
+        tr("Failed to read the Infinity file:\n%1\n\nThe file was too small.").arg(path),
+        QMessageBox::Ok);
     return;
   }
 
@@ -189,18 +201,20 @@ CreateFigureDialog::CreateFigureDialog(QWidget* parent, u8 slot) : QDialog(paren
   auto* combo_figlist = new QComboBox();
   QStringList filterlist;
   u32 first_entry = 0;
-  for (const auto& entry : Core::System::GetInstance().GetInfinityBase().GetFigureList())
+  for (const auto& entry : IOS::HLE::USB::InfinityBase::GetFigureList())
   {
     const auto figure = entry.second;
     // Only display entry if it is a piece appropriate for the slot
     if ((slot == 0 &&
          ((figure > 0x1E8480 && figure < 0x2DC6BF) || (figure > 0x3D0900 && figure < 0x4C4B3F))) ||
-        ((slot == 1 || slot == 2) && figure < 0x1E847F) ||
-        ((slot == 3 || slot == 4 || slot == 5 || slot == 6) &&
+        ((slot == 1 || slot == 2) && (figure > 0x3D0900 && figure < 0x4C4B3F)) ||
+        ((slot == 3 || slot == 6) && figure < 0x1E847F) ||
+        ((slot == 4 || slot == 5 || slot == 7 || slot == 8) &&
          (figure > 0x2DC6C0 && figure < 0x3D08FF)))
     {
-      combo_figlist->addItem(QString::fromStdString(entry.first), QVariant(figure));
-      filterlist << QString::fromStdString(entry.first);
+      const auto figure_name = QString::fromStdString(entry.first);
+      combo_figlist->addItem(figure_name, QVariant(figure));
+      filterlist << figure_name;
       if (first_entry == 0)
       {
         first_entry = figure;
@@ -226,7 +240,7 @@ CreateFigureDialog::CreateFigureDialog(QWidget* parent, u8 slot) : QDialog(paren
 
   auto* hbox_idvar = new QHBoxLayout();
   auto* label_id = new QLabel(tr("Figure Number:"));
-  auto* edit_num = new QLineEdit(QString::fromStdString(std::to_string(first_entry)));
+  auto* edit_num = new QLineEdit(QString::number(first_entry));
   auto* rxv = new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d*")), this);
   edit_num->setValidator(rxv);
   hbox_idvar->addWidget(label_id);
@@ -239,7 +253,7 @@ CreateFigureDialog::CreateFigureDialog(QWidget* parent, u8 slot) : QDialog(paren
 
   setLayout(layout);
 
-  connect(combo_figlist, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
+  connect(combo_figlist, &QComboBox::currentIndexChanged, [=](int index) {
     const u32 char_info = combo_figlist->itemData(index).toUInt();
     if (char_info != 0xFFFFFFFF)
     {
@@ -263,10 +277,11 @@ CreateFigureDialog::CreateFigureDialog(QWidget* parent, u8 slot) : QDialog(paren
     const auto found_fig = system.GetInfinityBase().FindFigure(char_number);
     if (!found_fig.empty())
     {
-      predef_name += QString::fromStdString(std::string(found_fig) + ".bin");
+      predef_name += QString::fromStdString(found_fig + ".bin");
     }
     else
     {
+      // i18n: This is used to create a file name. The string must end in ".bin".
       QString str = tr("Unknown(%1).bin");
       predef_name += str.arg(char_number);
     }
@@ -282,7 +297,7 @@ CreateFigureDialog::CreateFigureDialog(QWidget* parent, u8 slot) : QDialog(paren
     {
       QMessageBox::warning(
           this, tr("Failed to create Infinity file"),
-          tr("Blank figure creation failed at:\n%1, try again with a different character")
+          tr("Blank figure creation failed at:\n%1\n\nTry again with a different character.")
               .arg(m_file_path),
           QMessageBox::Ok);
       return;

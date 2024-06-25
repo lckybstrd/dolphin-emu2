@@ -24,8 +24,12 @@ public:
 
 signals:
   void BackendChanged(const QString& backend);
+  void UseFastTextureSamplingChanged();
+  void UseGPUTextureDecodingChanged();
 
 private:
   void CreateMainLayout();
   void OnBackendChanged(const QString& backend);
+
+  MainWindow* const m_main_window;
 };

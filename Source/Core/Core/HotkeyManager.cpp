@@ -207,7 +207,7 @@ static std::array<u32, NUM_HOTKEY_GROUPS> s_hotkey_down;
 static HotkeyStatus s_hotkey;
 static bool s_enabled;
 
-static InputConfig s_config("Hotkeys", _trans("Hotkeys"), "Hotkeys");
+static InputConfig s_config("Hotkeys", _trans("Hotkeys"), "Hotkeys", "Hotkeys");
 
 InputConfig* GetConfig()
 {
@@ -304,7 +304,7 @@ void Initialize()
 
 void LoadConfig()
 {
-  s_config.LoadConfig(InputConfig::InputClass::GC);
+  s_config.LoadConfig();
   LoadLegacyConfig(s_config.GetController(0));
 }
 
@@ -369,7 +369,7 @@ HotkeyManager::HotkeyManager()
     groups.emplace_back(m_hotkey_groups[group]);
     for (int key = s_groups_info[group].first; key <= s_groups_info[group].last; key++)
     {
-      m_keys[group]->AddInput(ControllerEmu::Translate, s_hotkey_labels[key]);
+      m_keys[group]->AddInput(ControllerEmu::Translatability::Translate, s_hotkey_labels[key]);
     }
   }
 }
@@ -381,6 +381,11 @@ HotkeyManager::~HotkeyManager()
 std::string HotkeyManager::GetName() const
 {
   return "Hotkeys";
+}
+
+InputConfig* HotkeyManager::GetConfig() const
+{
+  return HotkeyManagerEmu::GetConfig();
 }
 
 void HotkeyManager::GetInput(HotkeyStatus* kb, bool ignore_focus)

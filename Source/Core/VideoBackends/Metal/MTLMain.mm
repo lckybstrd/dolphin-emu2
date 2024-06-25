@@ -95,6 +95,26 @@ bool Metal::VideoBackend::Initialize(const WindowSystemInfo& wsi)
     MRCOwned<id<MTLDevice>> adapter = std::move(devs[selected_adapter_index]);
     Util::PopulateBackendInfoFeatures(&g_Config, adapter);
 
+#if TARGET_OS_OSX
+// This should be available on all macOS 13.3+ systems – but when using OCLP drivers, some devices
+// fail with "Unrecognized selector -[MTLIGAccelDevice setShouldMaximizeConcurrentCompilation:]"
+//
+// This concerns Intel Ivy Bridge, Haswell and Nvidia Kepler on macOS 13.3 or newer.
+// (See
+// https://github.com/dortania/OpenCore-Legacy-Patcher/blob/34676702f494a2a789c514cc76dba19b8b7206b1/docs/PATCHEXPLAIN.md?plain=1#L354C1-L354C83)
+//
+// Perform the feature detection dynamically instead.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+
+    if ([adapter respondsToSelector:@selector(setShouldMaximizeConcurrentCompilation:)])
+    {
+      [adapter setShouldMaximizeConcurrentCompilation:YES];
+    }
+
+#pragma clang diagnostic pop
+#endif
+
     UpdateActiveConfig();
 
     MRCOwned<CAMetalLayer*> layer = MRCRetain(static_cast<CAMetalLayer*>(wsi.render_surface));
@@ -119,7 +139,7 @@ void Metal::VideoBackend::Shutdown()
   ObjectCache::Shutdown();
 }
 
-void Metal::VideoBackend::InitBackendInfo()
+void Metal::VideoBackend::InitBackendInfo(const WindowSystemInfo& wsi)
 {
   @autoreleasepool
   {
@@ -144,8 +164,23 @@ void Metal::VideoBackend::PrepareWindow(WindowSystemInfo& wsi)
     return;
   NSView* view = static_cast<NSView*>(wsi.render_surface);
   CAMetalLayer* layer = [CAMetalLayer layer];
+
+  Util::PopulateBackendInfo(&g_Config);
+
+  if (g_Config.backend_info.bSupportsHDROutput && g_Config.bHDR)
+  {
+    [layer setWantsExtendedDynamicRangeContent:YES];
+    [layer setPixelFormat:MTLPixelFormatRGBA16Float];
+
+    const CFStringRef name = kCGColorSpaceExtendedLinearSRGB;
+    CGColorSpaceRef colorspace = CGColorSpaceCreateWithName(name);
+    [layer setColorspace:colorspace];
+    CGColorSpaceRelease(colorspace);
+  }
+
   [view setWantsLayer:YES];
   [view setLayer:layer];
+
   wsi.render_surface = layer;
 #endif
 }

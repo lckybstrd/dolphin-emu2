@@ -33,6 +33,8 @@ enum
   D_CONFIG_IDX,           // global settings
   D_GAMESETTINGS_IDX,     // user-specified settings which override both the global and the default
                           // settings (per game)
+  D_SKYLANDERS_IDX,
+
   D_MAPS_IDX,
   D_CACHE_IDX,
   D_COVERCACHE_IDX,
@@ -50,6 +52,9 @@ enum
   D_DUMPTEXTURES_IDX,
   D_DUMPDSP_IDX,
   D_DUMPSSL_IDX,
+  D_DUMPDEBUG_IDX,
+  D_DUMPDEBUG_BRANCHWATCH_IDX,
+  D_DUMPDEBUG_JITBLOCKS_IDX,
   D_LOAD_IDX,
   D_LOGS_IDX,
   D_MAILLOGS_IDX,
@@ -65,13 +70,17 @@ enum
   D_GBAUSER_IDX,
   D_GBASAVES_IDX,
   D_WIISDCARDSYNCFOLDER_IDX,
+  D_GPU_DRIVERS_EXTRACTED,
+  D_GPU_DRIVERS_TMP,
+  D_GPU_DRIVERS_HOOKS,
+  D_GPU_DRIVERS_FILE_REDIRECT,
+  D_ASM_ROOT_IDX,
   FIRST_FILE_USER_PATH_IDX,
   F_DOLPHINCONFIG_IDX = FIRST_FILE_USER_PATH_IDX,
   F_GCPADCONFIG_IDX,
   F_WIIPADCONFIG_IDX,
   F_GCKEYBOARDCONFIG_IDX,
   F_GFXCONFIG_IDX,
-  F_DEBUGGERCONFIG_IDX,
   F_LOGGERCONFIG_IDX,
   F_MAINLOG_IDX,
   F_MEM1DUMP_IDX,
@@ -226,6 +235,8 @@ const std::string& GetSysDirectory();
 
 #ifdef ANDROID
 void SetSysDirectory(const std::string& path);
+void SetGpuDriverDirectories(const std::string& path, const std::string& lib_path);
+const std::string GetGpuDriverDirectory(unsigned int dir_index);
 #endif
 
 #ifdef __APPLE__

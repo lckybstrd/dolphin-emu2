@@ -7,6 +7,7 @@
 
 #include "Common/Crypto/SHA1.h"
 #include "Common/Crypto/ec.h"
+#include "Common/EnumUtils.h"
 #include "Common/Logging/Log.h"
 #include "Common/ScopeGuard.h"
 #include "Common/StringUtil.h"
@@ -50,10 +51,10 @@ IPCReply ESDevice::Encrypt(u32 uid, const IOCtlVRequest& request)
   auto& system = GetSystem();
   auto& memory = system.GetMemory();
   u32 keyIndex = memory.Read_U32(request.in_vectors[0].address);
-  u8* source = memory.GetPointer(request.in_vectors[2].address);
   u32 size = request.in_vectors[2].size;
-  u8* iv = memory.GetPointer(request.io_vectors[0].address);
-  u8* destination = memory.GetPointer(request.io_vectors[1].address);
+  u8* source = memory.GetPointerForRange(request.in_vectors[2].address, size);
+  u8* iv = memory.GetPointerForRange(request.io_vectors[0].address, 16);
+  u8* destination = memory.GetPointerForRange(request.io_vectors[1].address, size);
 
   // TODO: Check whether the active title is allowed to encrypt.
 
@@ -70,10 +71,10 @@ IPCReply ESDevice::Decrypt(u32 uid, const IOCtlVRequest& request)
   auto& system = GetSystem();
   auto& memory = system.GetMemory();
   u32 keyIndex = memory.Read_U32(request.in_vectors[0].address);
-  u8* source = memory.GetPointer(request.in_vectors[2].address);
   u32 size = request.in_vectors[2].size;
-  u8* iv = memory.GetPointer(request.io_vectors[0].address);
-  u8* destination = memory.GetPointer(request.io_vectors[1].address);
+  u8* source = memory.GetPointerForRange(request.in_vectors[2].address, size);
+  u8* iv = memory.GetPointerForRange(request.io_vectors[0].address, 16);
+  u8* destination = memory.GetPointerForRange(request.io_vectors[1].address, size);
 
   // TODO: Check whether the active title is allowed to decrypt.
 
@@ -117,10 +118,11 @@ IPCReply ESDevice::Sign(const IOCtlVRequest& request)
   INFO_LOG_FMT(IOS_ES, "IOCTL_ES_SIGN");
   auto& system = GetSystem();
   auto& memory = system.GetMemory();
-  u8* ap_cert_out = memory.GetPointer(request.io_vectors[1].address);
-  u8* data = memory.GetPointer(request.in_vectors[0].address);
+  u8* ap_cert_out = memory.GetPointerForRange(request.io_vectors[1].address, sizeof(CertECC));
   u32 data_size = request.in_vectors[0].size;
-  u8* sig_out = memory.GetPointer(request.io_vectors[0].address);
+  u8* data = memory.GetPointerForRange(request.in_vectors[0].address, data_size);
+  u8* sig_out =
+      memory.GetPointerForRange(request.io_vectors[0].address, sizeof(Common::ec::Signature));
 
   if (!m_core.m_title_context.active)
     return IPCReply(ES_EINVAL);
@@ -152,7 +154,8 @@ ReturnCode ESCore::VerifySign(const std::vector<u8>& hash, const std::vector<u8>
 
   IOSC& iosc = m_ios.GetIOSC();
   IOSC::Handle ng_cert;
-  ReturnCode ret = iosc.CreateObject(&ng_cert, IOSC::TYPE_PUBLIC_KEY, IOSC::SUBTYPE_ECC233, PID_ES);
+  ReturnCode ret =
+      iosc.CreateObject(&ng_cert, IOSC::TYPE_PUBLIC_KEY, IOSC::ObjectSubType::ECC233, PID_ES);
   if (ret != IPC_SUCCESS)
     return ret;
   Common::ScopeGuard handle_guard{[&] { iosc.DeleteObject(ng_cert, PID_ES); }};
@@ -162,7 +165,7 @@ ReturnCode ESCore::VerifySign(const std::vector<u8>& hash, const std::vector<u8>
   if (ret != IPC_SUCCESS)
   {
     ERROR_LOG_FMT(IOS_ES, "VerifySign: VerifyContainer(ng) failed with error {}",
-                  static_cast<s32>(ret));
+                  Common::ToUnderlying(ret));
     return ret;
   }
 
@@ -170,12 +173,12 @@ ReturnCode ESCore::VerifySign(const std::vector<u8>& hash, const std::vector<u8>
   if (ret != IPC_SUCCESS)
   {
     ERROR_LOG_FMT(IOS_ES, "VerifySign: IOSC_VerifyPublicKeySign(ap) failed with error {}",
-                  static_cast<s32>(ret));
+                  Common::ToUnderlying(ret));
     return ret;
   }
 
   IOSC::Handle ap_cert;
-  ret = iosc.CreateObject(&ap_cert, IOSC::TYPE_PUBLIC_KEY, IOSC::SUBTYPE_ECC233, PID_ES);
+  ret = iosc.CreateObject(&ap_cert, IOSC::TYPE_PUBLIC_KEY, IOSC::ObjectSubType::ECC233, PID_ES);
   if (ret != IPC_SUCCESS)
     return ret;
   Common::ScopeGuard handle2_guard{[&] { iosc.DeleteObject(ap_cert, PID_ES); }};
@@ -184,7 +187,7 @@ ReturnCode ESCore::VerifySign(const std::vector<u8>& hash, const std::vector<u8>
   if (ret != IPC_SUCCESS)
   {
     ERROR_LOG_FMT(IOS_ES, "VerifySign: IOSC_ImportPublicKey(ap) failed with error {}",
-                  static_cast<s32>(ret));
+                  Common::ToUnderlying(ret));
     return ret;
   }
 
@@ -193,7 +196,7 @@ ReturnCode ESCore::VerifySign(const std::vector<u8>& hash, const std::vector<u8>
   if (ret != IPC_SUCCESS)
   {
     ERROR_LOG_FMT(IOS_ES, "VerifySign: IOSC_VerifyPublicKeySign(data) failed with error {}",
-                  static_cast<s32>(ret));
+                  Common::ToUnderlying(ret));
     return ret;
   }
 
