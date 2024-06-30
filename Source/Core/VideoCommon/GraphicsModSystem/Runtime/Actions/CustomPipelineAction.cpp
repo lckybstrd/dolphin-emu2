@@ -154,7 +154,8 @@ void CustomPipelineAction::DrawImGui()
                 "CustomPipelineActionMaterial", editor.GetEditorState(),
                 &m_passes_config[0].m_pixel_material_asset, GraphicsModEditor::Material))
         {
-          GraphicsModEditor::EditorEvents::ChangeOccurredEvent::Trigger();
+          GraphicsModEditor::EditorEvents::AssetReloadEvent::Trigger(
+              m_passes_config[0].m_pixel_material_asset);
         }
         ImGui::EndTable();
       }
