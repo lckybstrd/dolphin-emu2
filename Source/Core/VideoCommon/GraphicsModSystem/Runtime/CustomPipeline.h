@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <span>
@@ -16,6 +17,7 @@
 #include "VideoCommon/Assets/ShaderAsset.h"
 #include "VideoCommon/Assets/TextureAsset.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/CustomTextureCache.h"
+#include "VideoCommon/GraphicsModSystem/Types.h"
 #include "VideoCommon/ShaderGenCommon.h"
 
 namespace VideoCommon
@@ -29,7 +31,8 @@ struct CustomPipeline
   void UpdatePixelData(VideoCommon::CustomAssetLoader& loader,
                        std::shared_ptr<VideoCommon::CustomAssetLibrary> library,
                        std::shared_ptr<VideoCommon::CustomTextureCache> texture_cache,
-                       std::span<const u32> texture_units,
+                       Common::SmallVector<GraphicsModSystem::TextureView, 8> textures,
+                       std::array<SamplerState, 8> samplers,
                        const VideoCommon::CustomAssetLibrary::AssetID& material_to_load);
 
   VideoCommon::CachedAsset<VideoCommon::MaterialAsset> m_pixel_material;

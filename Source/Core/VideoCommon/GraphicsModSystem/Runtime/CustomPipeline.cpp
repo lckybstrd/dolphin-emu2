@@ -178,7 +178,8 @@ void CustomPipeline::UpdatePixelData(
     VideoCommon::CustomAssetLoader& loader,
     std::shared_ptr<VideoCommon::CustomAssetLibrary> library,
     std::shared_ptr<VideoCommon::CustomTextureCache> texture_cache,
-    std::span<const u32> texture_units,
+    Common::SmallVector<GraphicsModSystem::TextureView, 8> textures,
+    std::array<SamplerState, 8> samplers,
     const VideoCommon::CustomAssetLibrary::AssetID& material_to_load)
 {
   if (!m_pixel_material.m_asset || material_to_load != m_pixel_material.m_asset->GetAssetId())
@@ -202,7 +203,7 @@ void CustomPipeline::UpdatePixelData(
     {
       max_material_data_size += VideoCommon::MaterialProperty::GetMemorySize(property);
       VideoCommon::MaterialProperty::WriteAsShaderCode(m_last_generated_material_code, property);
-      if (std::holds_alternative<VideoCommon::CustomAssetLibrary::AssetID>(property.m_value))
+      if (std::holds_alternative<VideoCommon::TextureSamplerValue>(property.m_value))
       {
         texture_count++;
       }
@@ -248,10 +249,10 @@ void CustomPipeline::UpdatePixelData(
       return;
     }
 
-    if (auto* texture_asset_id =
-            std::get_if<VideoCommon::CustomAssetLibrary::AssetID>(&property.m_value))
+    if (auto* texture_sampler_value =
+            std::get_if<VideoCommon::TextureSamplerValue>(&property.m_value))
     {
-      if (*texture_asset_id != "")
+      if (texture_sampler_value->asset != "")
       {
         AbstractTextureType texture_type = AbstractTextureType::Texture_2DArray;
         if (std::holds_alternative<VideoCommon::ShaderProperty::SamplerCube>(
@@ -293,27 +294,43 @@ void CustomPipeline::UpdatePixelData(
             texture_data->m_define_code = fmt::format("#define HAS_{} 1\n", property.m_code_name);
           }
         }
-        const auto texture_result =
-            texture_cache->GetTextureAsset(loader, library, *texture_asset_id, texture_type);
+        const auto texture_result = texture_cache->GetTextureAsset(
+            loader, library, texture_sampler_value->asset, texture_type);
 
         if (texture_result)
         {
-          SamplerState state = texture_result->data->m_sampler;
-          if (g_ActiveConfig.iMaxAnisotropy != 0 && !(state.tm0.min_filter == FilterMode::Near &&
-                                                      state.tm0.mag_filter == FilterMode::Near))
+          SamplerState state;
+          if (texture_sampler_value->sampler_origin ==
+              VideoCommon::TextureSamplerValue::SamplerOrigin::Asset)
           {
-            state.tm0.min_filter = FilterMode::Linear;
-            state.tm0.mag_filter = FilterMode::Linear;
-            if (!texture_result->data->m_texture.m_slices.empty() &&
-                !texture_result->data->m_texture.m_slices[0].m_levels.empty())
+            state = texture_result->data->m_sampler;
+            if (g_ActiveConfig.iMaxAnisotropy != 0 && !(state.tm0.min_filter == FilterMode::Near &&
+                                                        state.tm0.mag_filter == FilterMode::Near))
             {
-              state.tm0.mipmap_filter = FilterMode::Linear;
+              state.tm0.min_filter = FilterMode::Linear;
+              state.tm0.mag_filter = FilterMode::Linear;
+              if (!texture_result->data->m_texture.m_slices.empty() &&
+                  !texture_result->data->m_texture.m_slices[0].m_levels.empty())
+              {
+                state.tm0.mipmap_filter = FilterMode::Linear;
+              }
+              state.tm0.anisotropic_filtering = true;
             }
-            state.tm0.anisotropic_filtering = true;
+            else
+            {
+              state.tm0.anisotropic_filtering = false;
+            }
           }
           else
           {
-            state.tm0.anisotropic_filtering = false;
+            for (const auto& texture : textures)
+            {
+              if (texture.hash_name == texture_sampler_value->texture_hash)
+              {
+                state = samplers[texture.unit];
+                break;
+              }
+            }
           }
           g_gfx->SetTexture(sampler_index, texture_result->texture);
           g_gfx->SetSamplerState(sampler_index, state);
@@ -363,12 +380,12 @@ void CustomPipeline::UpdatePixelData(
       m_last_generated_shader_code.Write("{}", game_texture->m_define_code);
     }
 
-    for (std::size_t i = 0; i < texture_units.size(); i++)
+    for (std::size_t i = 0; i < textures.size(); i++)
     {
-      const auto& texture_unit = texture_units[i];
+      const auto& texture = textures[i];
       m_last_generated_shader_code.Write(
           "#define TEX_COORD{} data.texcoord[data.texmap_to_texcoord_index[{}]].xy\n", i,
-          texture_unit);
+          texture.unit);
     }
     m_last_generated_shader_code.Write("{}", color_shader_data);
   }
