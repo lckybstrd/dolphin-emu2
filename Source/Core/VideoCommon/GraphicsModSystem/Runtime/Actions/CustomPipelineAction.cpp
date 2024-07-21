@@ -128,8 +128,8 @@ void CustomPipelineAction::OnDrawStarted(GraphicsModActionData::DrawStarted* dra
   const auto& pass_config = m_passes_config[0];
   auto& pass = m_pipeline_passes[0];
 
-  pass.UpdatePixelData(loader, m_library, m_texture_cache, draw_started->texture_units,
-                       pass_config.m_pixel_material_asset);
+  pass.UpdatePixelData(loader, m_library, m_texture_cache, draw_started->draw_data_view.textures,
+                       draw_started->draw_data_view.samplers, pass_config.m_pixel_material_asset);
   CustomPixelShader custom_pixel_shader;
   custom_pixel_shader.custom_shader = pass.m_last_generated_shader_code.GetBuffer();
   custom_pixel_shader.material_uniform_block = pass.m_last_generated_material_code.GetBuffer();
