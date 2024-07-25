@@ -36,7 +36,7 @@ AchievementSettingsWidget::AchievementSettingsWidget(QWidget* parent) : QWidget(
 
   // If hardcore is enabled when the emulator starts, make sure it turns off what it needs to
   if (Config::Get(Config::RA_HARDCORE_ENABLED))
-    ToggleHardcore();
+    emit Settings::Instance().HardcoreStateChanged();
 }
 
 void AchievementSettingsWidget::UpdateData()
@@ -260,16 +260,6 @@ void AchievementSettingsWidget::Logout()
 void AchievementSettingsWidget::ToggleHardcore()
 {
   SaveSettings();
-  AchievementManager::GetInstance().SetHardcoreMode();
-  if (Config::Get(Config::RA_HARDCORE_ENABLED))
-  {
-    if (Config::Get(Config::MAIN_EMULATION_SPEED) < 1.0f)
-      Config::SetBaseOrCurrent(Config::MAIN_EMULATION_SPEED, 1.0f);
-    Config::SetBaseOrCurrent(Config::FREE_LOOK_ENABLED, false);
-    Config::SetBaseOrCurrent(Config::MAIN_ENABLE_CHEATS, false);
-    Settings::Instance().SetDebugModeEnabled(false);
-  }
-  emit Settings::Instance().EmulationStateChanged(Core::GetState(Core::System::GetInstance()));
   emit Settings::Instance().HardcoreStateChanged();
 }
 
