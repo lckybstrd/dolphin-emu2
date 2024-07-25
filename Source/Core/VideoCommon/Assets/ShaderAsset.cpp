@@ -279,6 +279,10 @@ ParseShaderProperties(const VideoCommon::CustomAssetLibrary::AssetID& asset_id,
         return false;
       }
     }
+    else
+    {
+      property.m_default = ShaderProperty::GetDefaultValueFromTypeName(type);
+    }
 
     shader_properties->try_emplace(std::move(code_name), std::move(property));
   }
