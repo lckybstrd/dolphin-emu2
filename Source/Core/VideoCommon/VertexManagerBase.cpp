@@ -1428,8 +1428,7 @@ void VertexManagerBase::DrawCustomMesh(
       // Now we can upload uniforms, as nothing else will override them.
       geometry_shader_manager.SetConstants(primitive_type);
       pixel_shader_manager.SetConstants();
-      if (!custom_pixel_shader_uniforms.empty() &&
-          pixel_shader_manager.custom_constants.data() != custom_pixel_shader_uniforms.data())
+      if (!custom_pixel_shader_uniforms.empty())
       {
         pixel_shader_manager.custom_constants_dirty = true;
       }
