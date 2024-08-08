@@ -58,6 +58,7 @@ import org.dolphinemu.dolphinemu.ui.main.ThemeProvider
 import org.dolphinemu.dolphinemu.utils.AfterDirectoryInitializationRunner
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization
 import org.dolphinemu.dolphinemu.utils.FileBrowserHelper
+import org.dolphinemu.dolphinemu.utils.HapticListener
 import org.dolphinemu.dolphinemu.utils.ThemeHelper
 import kotlin.math.roundToInt
 
@@ -702,7 +703,8 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
                 valueTo = 150f
                 value = IntSetting.MAIN_CONTROL_SCALE.int.toFloat()
                 stepSize = 1f
-                addOnChangeListener(Slider.OnChangeListener { _: Slider?, progress: Float, _: Boolean ->
+                addOnChangeListener(
+                    HapticListener.wrapOnChangeListener { _: Slider, progress: Float, _: Boolean ->
                     dialogBinding.inputScaleValue.text = "${(progress.toInt() + 50)}%"
                 })
             }
@@ -713,7 +715,8 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
                 valueTo = 100f
                 value = IntSetting.MAIN_CONTROL_OPACITY.int.toFloat()
                 stepSize = 1f
-                addOnChangeListener(Slider.OnChangeListener { _: Slider?, progress: Float, _: Boolean ->
+                addOnChangeListener(
+                    HapticListener.wrapOnChangeListener { _: Slider, progress: Float, _: Boolean ->
                     inputOpacityValue.text = progress.toInt().toString() + "%"
                 })
             }
