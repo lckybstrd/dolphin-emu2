@@ -23,9 +23,6 @@
 #include <QTextBrowser>
 
 #include <algorithm>
-#include <sstream>
-
-#include "Common/CommonPaths.h"
 #include "Common/Config/Config.h"
 #include "Common/HttpRequest.h"
 #include "Common/Logging/Log.h"
