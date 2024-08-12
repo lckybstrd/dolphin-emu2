@@ -7,7 +7,7 @@ import androidx.core.view.ViewCompat
 import com.google.android.material.slider.Slider
 
 /**
- * Wrapper class that enhances listeners with haptic feedback.
+ * Wrapper object that enhances listeners with haptic feedback.
  */
 object HapticListener {
 
@@ -31,15 +31,33 @@ object HapticListener {
 
     /**
      * Wraps a [Slider.OnChangeListener] with haptic feedback.
+     * Feedback is provided at intervals of 5% to prevent excessive vibrations.
      *
      * @param listener The [Slider.OnChangeListener] to be wrapped. Can be null.
+     * @param initialValue The value used to initialize the slider.
      * @return A new listener which wraps [listener] with haptic feedback.
      */
-    fun wrapOnChangeListener(listener: Slider.OnChangeListener?): Slider.OnChangeListener {
+    fun wrapOnChangeListener(listener: Slider.OnChangeListener?, initialValue: Float): Slider.OnChangeListener {
+        var previousValue = initialValue
         return Slider.OnChangeListener { slider: Slider, value: Float, fromUser: Boolean ->
             listener?.onValueChange(slider, value, fromUser)
             if (fromUser) {
-                ViewCompat.performHapticFeedback(slider, HapticFeedbackConstantsCompat.CLOCK_TICK)
+                val interval = (slider.valueTo - slider.valueFrom) * 0.05f
+                val previousInterval = kotlin.math.round(previousValue / interval) * interval
+                val valueChange = kotlin.math.abs(value - previousInterval)
+                val feedbackConstant = if (value == slider.valueFrom || value == slider.valueTo) {
+                    HapticFeedbackConstantsCompat.CONTEXT_CLICK
+                } else if (value == previousValue || valueChange >= interval) {
+                    HapticFeedbackConstantsCompat.CLOCK_TICK
+                } else {
+                    HapticFeedbackConstantsCompat.NO_HAPTICS
+                }
+                if (feedbackConstant != HapticFeedbackConstantsCompat.NO_HAPTICS) {
+                    ViewCompat.performHapticFeedback(slider, feedbackConstant)
+                    previousValue = value
+                }
+            } else {
+                previousValue = value
             }
         }
     }

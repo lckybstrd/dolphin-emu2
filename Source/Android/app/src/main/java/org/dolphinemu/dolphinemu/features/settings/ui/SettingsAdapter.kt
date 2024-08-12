@@ -262,7 +262,7 @@ class SettingsAdapter(
             }
         }
         slider.value = (seekbarProgress / slider.stepSize).roundToInt() * slider.stepSize
-        slider.addOnChangeListener(HapticListener.wrapOnChangeListener(this))
+        slider.addOnChangeListener(HapticListener.wrapOnChangeListener(this, slider.value))
 
         dialog = MaterialAlertDialogBuilder(fragmentView.fragmentActivity)
             .setTitle(item.name)

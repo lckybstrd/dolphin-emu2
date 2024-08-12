@@ -704,9 +704,10 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
                 value = IntSetting.MAIN_CONTROL_SCALE.int.toFloat()
                 stepSize = 1f
                 addOnChangeListener(
-                    HapticListener.wrapOnChangeListener { _: Slider, progress: Float, _: Boolean ->
-                    dialogBinding.inputScaleValue.text = "${(progress.toInt() + 50)}%"
-                })
+                    HapticListener.wrapOnChangeListener({ _: Slider, progress: Float, _: Boolean ->
+                        dialogBinding.inputScaleValue.text = "${(progress.toInt() + 50)}%"
+                    }, value)
+                )
             }
             inputScaleValue.text =
                 "${(dialogBinding.inputScaleSlider.value.toInt() + 50)}%"
@@ -716,9 +717,10 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
                 value = IntSetting.MAIN_CONTROL_OPACITY.int.toFloat()
                 stepSize = 1f
                 addOnChangeListener(
-                    HapticListener.wrapOnChangeListener { _: Slider, progress: Float, _: Boolean ->
-                    inputOpacityValue.text = progress.toInt().toString() + "%"
-                })
+                    HapticListener.wrapOnChangeListener({ _: Slider, progress: Float, _: Boolean ->
+                        inputOpacityValue.text = progress.toInt().toString() + "%"
+                    }, value)
+                )
             }
             inputOpacityValue.text = inputOpacitySlider.value.toInt().toString() + "%"
         }
