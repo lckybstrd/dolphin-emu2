@@ -74,6 +74,12 @@ std::string VideoBackend::GetDisplayName() const
     return _trans("OpenGL");
 }
 
+std::string VideoBackend::GetVideoInfo() const
+{
+  return fmt::format("{}, {}, {}", GetDisplayName(), g_ogl_config.gl_renderer,
+                     g_ogl_config.gl_version);
+}
+
 void VideoBackend::InitBackendInfo(const WindowSystemInfo& wsi)
 {
   std::unique_ptr<GLContext> temp_gl_context =

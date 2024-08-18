@@ -18,6 +18,7 @@ public:
 
   std::string GetName() const override;
   std::string GetDisplayName() const override;
+  std::string GetVideoInfo() const override;
 
   void InitBackendInfo(const WindowSystemInfo& wsi) override;
 

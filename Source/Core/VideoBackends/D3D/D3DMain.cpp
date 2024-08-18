@@ -6,6 +6,8 @@
 #include <memory>
 #include <string>
 
+#include <dxgi.h>
+
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
 #include "Common/MsgHandler.h"
@@ -36,6 +38,40 @@ std::string VideoBackend::GetName() const
 std::string VideoBackend::GetDisplayName() const
 {
   return _trans("Direct3D 11");
+}
+
+std::string VideoBackend::GetVideoInfo() const
+{
+  ComPtr<IDXGIAdapter> adapter;
+  HRESULT hr = D3D::dxgi_factory->EnumAdapters(g_ActiveConfig.iAdapter, adapter.GetAddressOf());
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to enumerate {} adapter: {}", GetDisplayName(), DX11HRWrap(hr));
+    return GetDisplayName();
+  }
+
+  DXGI_ADAPTER_DESC description;
+  hr = adapter->GetDesc(&description);
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to retrieve {} adapter description: {}", GetDisplayName(),
+                 DX11HRWrap(hr));
+    return GetDisplayName();
+  }
+
+  LARGE_INTEGER driver_version;
+  hr = adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver_version);
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to retrieve {} adapter driver version: {}", GetDisplayName(),
+                 DX11HRWrap(hr));
+    return fmt::format("{}, {}", GetDisplayName(), WStringToUTF8(description.Description));
+  }
+
+  const LONGLONG& version = driver_version.QuadPart;
+  return fmt::format("{}, {}, {}.{}.{} Build {}", GetDisplayName(),
+                     WStringToUTF8(description.Description), version >> 48,
+                     (version >> 32) & 0xffff, (version >> 16) & 0xffff, version & 0xffff);
 }
 
 std::optional<std::string> VideoBackend::GetWarningMessage() const

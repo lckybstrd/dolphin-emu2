@@ -36,6 +36,48 @@ std::string VideoBackend::GetDisplayName() const
   return "Direct3D 12";
 }
 
+std::string VideoBackend::GetVideoInfo() const
+{
+  if (g_dx_context == nullptr)
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to retrieve adapter info because no {} context established",
+                 GetDisplayName());
+    return GetDisplayName();
+  }
+
+  ComPtr<IDXGIAdapter> adapter;
+  HRESULT hr =
+      g_dx_context->GetDXGIFactory()->EnumAdapters(g_ActiveConfig.iAdapter, adapter.GetAddressOf());
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to enumerate {} adapter: {}", GetDisplayName(), DX12HRWrap(hr));
+    return GetDisplayName();
+  }
+
+  DXGI_ADAPTER_DESC description;
+  hr = adapter->GetDesc(&description);
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to retrieve {} adapter description: {}", GetDisplayName(),
+                 DX12HRWrap(hr));
+    return GetDisplayName();
+  }
+
+  LARGE_INTEGER driver_version;
+  hr = adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver_version);
+  if (FAILED(hr))
+  {
+    WARN_LOG_FMT(VIDEO, "Unable to retrieve {} adapter driver version: {}", GetDisplayName(),
+                 DX12HRWrap(hr));
+    return fmt::format("{}, {}", GetDisplayName(), WStringToUTF8(description.Description));
+  }
+
+  const LONGLONG& version = driver_version.QuadPart;
+  return fmt::format("{}, {}, {}.{}.{} Build {}", GetDisplayName(),
+                     WStringToUTF8(description.Description), version >> 48,
+                     (version >> 32) & 0xffff, (version >> 16) & 0xffff, version & 0xffff);
+}
+
 void VideoBackend::InitBackendInfo(const WindowSystemInfo& wsi)
 {
   if (!D3DCommon::LoadLibraries())

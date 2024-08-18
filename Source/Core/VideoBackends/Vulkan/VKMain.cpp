@@ -303,4 +303,13 @@ void VideoBackend::PrepareWindow(WindowSystemInfo& wsi)
   wsi.render_surface = layer;
 #endif
 }
+
+std::string VideoBackend::GetVideoInfo() const
+{
+  const VkPhysicalDevice device = g_vulkan_context->GetPhysicalDevice();
+  VkPhysicalDeviceProperties properties;
+  vkGetPhysicalDeviceProperties(device, &properties);
+  return fmt::format("{}, {}, {}, {:x}", GetDisplayName(), properties.deviceName,
+                     properties.driverVersion, properties.driverVersion);
+}
 }  // namespace Vulkan
