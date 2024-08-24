@@ -137,7 +137,8 @@ int VerifyCommand(const std::vector<std::string>& args)
       rc_hash_calculate = true;
   }
 
-  if (!hashes_to_calculate.crc32 && !hashes_to_calculate.md5 && !hashes_to_calculate.sha1 && !rc_hash_calculate)
+  if (!hashes_to_calculate.crc32 && !hashes_to_calculate.md5 && !hashes_to_calculate.sha1 &&
+      !rc_hash_calculate)
   {
     // optparse should protect from this
     fmt::print(std::cerr, "Error: No algorithms selected for the operation\n");
