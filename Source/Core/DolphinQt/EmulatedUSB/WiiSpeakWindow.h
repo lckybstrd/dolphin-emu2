@@ -22,7 +22,6 @@ public:
 private:
   void CreateMainWindow();
   void OnEmulationStateChanged(Core::State state);
-  void EmulateWiiSpeak(bool emulate);
   void SetWiiSpeakConnectionState(bool connected);
   void OnInputDeviceChange();
 

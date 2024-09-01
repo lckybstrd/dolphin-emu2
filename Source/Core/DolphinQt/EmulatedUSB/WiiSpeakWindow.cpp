@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QString>
 #include <QVBoxLayout>
 
@@ -38,13 +39,16 @@ WiiSpeakWindow::~WiiSpeakWindow() = default;
 void WiiSpeakWindow::CreateMainWindow()
 {
   auto* main_layout = new QVBoxLayout();
+  auto* label = new QLabel();
+  label->setText(QStringLiteral("<center><i>%1</i></center>")
+                     .arg(tr("Some settings cannot be changed when emulation is running.")));
+  main_layout->addWidget(label);
 
   auto* checkbox_group = new QGroupBox();
   auto* checkbox_layout = new QHBoxLayout();
   checkbox_layout->setAlignment(Qt::AlignHCenter);
   m_checkbox_enabled = new QCheckBox(tr("Emulate Wii Speak"), this);
   m_checkbox_enabled->setChecked(Config::Get(Config::MAIN_EMULATE_WII_SPEAK));
-  connect(m_checkbox_enabled, &QCheckBox::toggled, this, &WiiSpeakWindow::EmulateWiiSpeak);
   checkbox_layout->addWidget(m_checkbox_enabled);
   checkbox_group->setLayout(checkbox_layout);
   main_layout->addWidget(checkbox_group);
@@ -74,16 +78,9 @@ void WiiSpeakWindow::CreateMainWindow()
   config_layout->addWidget(m_combobox_microphones);
 
   m_config_group->setLayout(config_layout);
-  m_config_group->setVisible(Config::Get(Config::MAIN_EMULATE_WII_SPEAK));
   main_layout->addWidget(m_config_group);
 
   setLayout(main_layout);
-}
-
-void WiiSpeakWindow::EmulateWiiSpeak(bool emulate)
-{
-  Config::SetBaseOrCurrent(Config::MAIN_EMULATE_WII_SPEAK, emulate);
-  m_config_group->setVisible(emulate);
 }
 
 void WiiSpeakWindow::SetWiiSpeakConnectionState(bool muted)
