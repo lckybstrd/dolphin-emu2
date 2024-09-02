@@ -40,6 +40,20 @@ std::string Metal::VideoBackend::GetDisplayName() const
   return _trans("Metal");
 }
 
+std::string Metal::VideoBackend::GetVideoInfo() const
+{
+  const std::vector<MRCOwned<id<MTLDevice>>> devs = Util::GetAdapterList();
+  size_t selected_adapter_index = static_cast<size_t>(g_Config.iAdapter);
+  if (selected_adapter_index >= devs.size())
+  {
+    return GetDisplayName();
+  }
+  const id<MTLDevice> device = devs[selected_adapter_index];
+  const std::string device_name = [[device name] UTF8String];
+
+  return fmt::format("{}, {}", GetDisplayName(), device_name);
+}
+
 std::optional<std::string> Metal::VideoBackend::GetWarningMessage() const
 {
   if (Util::GetAdapterList().empty())

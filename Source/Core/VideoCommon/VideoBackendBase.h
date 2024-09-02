@@ -47,6 +47,7 @@ public:
 
   virtual std::string GetName() const = 0;
   virtual std::string GetDisplayName() const { return GetName(); }
+  virtual std::string GetVideoInfo() const { return GetDisplayName(); }
   virtual void InitBackendInfo(const WindowSystemInfo& wsi) = 0;
   virtual std::optional<std::string> GetWarningMessage() const { return {}; }
 

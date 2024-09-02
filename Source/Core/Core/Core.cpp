@@ -580,6 +580,11 @@ static void EmuThread(Core::System& system, std::unique_ptr<BootParameters> boot
     PanicAlertFmt("Failed to initialize video backend!");
     return;
   }
+
+  const std::string video_info = fmt::format("Video Info: {}", g_video_backend->GetVideoInfo());
+  OSD::AddMessage(video_info, 5000);
+  INFO_LOG_FMT(VIDEO, "{}", video_info);
+
   Common::ScopeGuard video_guard{[] {
     // Clear on screen messages that haven't expired
     OSD::ClearMessages();
