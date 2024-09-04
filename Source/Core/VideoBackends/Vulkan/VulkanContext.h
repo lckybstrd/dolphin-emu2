@@ -56,6 +56,7 @@ public:
     float pointSizeRange[2];
     float maxSamplerAnisotropy;
     u32 subgroupSize = 1;
+    VkDriverId driverID = static_cast<VkDriverId>(0);
 #define FEATURE(x) bool x;
     VULKAN_CONTEXT_ENUMERATE_WANTED_FEATURES(FEATURE)
 #undef FEATURE
